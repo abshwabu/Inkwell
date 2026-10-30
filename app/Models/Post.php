@@ -1,0 +1,171 @@
+<?php
+
+namespace App\Models;
+
+use App\Enums\PostStatus;
+use App\Traits\HasUniqueSlug;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Post extends Model
+{
+    use HasFactory, SoftDeletes, HasUniqueSlug;
+
+    public string $slugField = 'slug';
+    public string $slugSourceField = 'title';
+
+    protected $fillable = [
+        'user_id',
+        'category_id',
+        'title',
+        'slug',
+        'excerpt',
+        'cover_image_path',
+        'content_json',
+        'content_html',
+        'reading_time_minutes',
+        'status',
+        'published_at',
+        'views_count',
+        'likes_count',
+        'comments_count',
+    ];
+
+    /**
+     * Get the attributes that should be cast.
+     */
+    protected function casts(): array
+    {
+        return [
+            'content_json' => 'array',
+            'reading_time_minutes' => 'integer',
+            'status' => PostStatus::class,
+            'published_at' => 'datetime',
+            'views_count' => 'integer',
+            'likes_count' => 'integer',
+            'comments_count' => 'integer',
+        ];
+    }
+
+    /**
+     * Model boot logic.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Post $post) {
+            // Auto-calculate reading time if not explicitly provided
+            if (empty($post->reading_time_minutes) || $post->reading_time_minutes <= 0) {
+                $rawText = strip_tags((string) $post->content_html);
+                if (empty(trim($rawText)) && !empty($post->excerpt)) {
+                    $rawText = $post->excerpt;
+                }
+                $wordCount = str_word_count($rawText);
+                $post->reading_time_minutes = max(1, (int) ceil($wordCount / 200));
+            }
+        });
+    }
+
+    /**
+     * The author of the post.
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Alias for author.
+     */
+    public function author(): BelongsTo
+    {
+        return $this->user();
+    }
+
+    /**
+     * Category the post belongs to.
+     */
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    /**
+     * Tags attached to the post.
+     */
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(Tag::class, 'post_tag')->withTimestamps();
+    }
+
+    /**
+     * Comments on the post.
+     */
+    public function comments(): HasMany
+    {
+        return $this->hasMany(Comment::class);
+    }
+
+    /**
+     * Likes on the post.
+     */
+    public function likes(): HasMany
+    {
+        return $this->hasMany(Like::class);
+    }
+
+    /**
+     * Users who liked the post.
+     */
+    public function likers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'likes')->withTimestamps();
+    }
+
+    /**
+     * Bookmarks of the post.
+     */
+    public function bookmarks(): HasMany
+    {
+        return $this->hasMany(Bookmark::class);
+    }
+
+    /**
+     * Views logged for the post.
+     */
+    public function views(): HasMany
+    {
+        return $this->hasMany(PostView::class);
+    }
+
+    /**
+     * Scope to filter published posts.
+     */
+    public function scopePublished(Builder $query): void
+    {
+        $query->where('status', PostStatus::PUBLISHED->value)
+            ->whereNotNull('published_at')
+            ->where('published_at', '<=', now());
+    }
+
+    /**
+     * Scope to order posts by popularity based on views, likes, and comments.
+     */
+    public function scopePopular(Builder $query): void
+    {
+        $query->orderByRaw('(views_count + (likes_count * 2) + (comments_count * 3)) DESC')
+            ->orderByDesc('views_count');
+    }
+
+    /**
+     * Scope to eager load standard post relations to prevent N+1 queries.
+     */
+    public function scopeWithRelations(Builder $query): void
+    {
+        $query->with(['user', 'category', 'tags']);
+    }
+}
