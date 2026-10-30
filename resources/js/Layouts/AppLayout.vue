@@ -117,7 +117,7 @@ const handleCategorySelect = (category) => {
                 <div class="flex items-center gap-2 sm:gap-3">
                     <!-- Write Button -->
                     <Link
-                        :href="page.props.auth?.user ? route('dashboard') : route('login')"
+                        :href="route('posts.create')"
                         class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-white"
                         title="Write a new story"
                     >
@@ -177,8 +177,11 @@ const handleCategorySelect = (category) => {
                                 <DropdownLink :href="route('dashboard')">
                                     Dashboard
                                 </DropdownLink>
+                                <DropdownLink :href="route('author.show', page.props.auth.user.username)">
+                                    Public Profile
+                                </DropdownLink>
                                 <DropdownLink :href="route('profile.edit')">
-                                    Profile Settings
+                                    Settings
                                 </DropdownLink>
                                 <DropdownLink :href="route('logout')" method="post" as="button">
                                     Sign Out

@@ -22,6 +22,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Optional Email Verification Flag
+    |--------------------------------------------------------------------------
+    |
+    | When set to false (default), email verification is optional and newly
+    | registered users have full immediate access to the platform.
+    |
+    */
+
+    'verify_email' => env('AUTH_VERIFY_EMAIL', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Authentication Guards
     |--------------------------------------------------------------------------
     |
