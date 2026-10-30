@@ -20,7 +20,15 @@ class Category extends Model
         'slug',
         'description',
         'color',
+        'sort_order',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'sort_order' => 'integer',
+        ];
+    }
 
     /**
      * Posts associated with this category.

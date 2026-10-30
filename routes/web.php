@@ -1,5 +1,13 @@
 <?php
 
+use App\Http\Controllers\Admin\AuditLogController as AdminAuditLogController;
+use App\Http\Controllers\Admin\CategoryController as AdminCategoryController;
+use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\PostController as AdminPostController;
+use App\Http\Controllers\Admin\ReportController as AdminReportController;
+use App\Http\Controllers\Admin\SettingController as AdminSettingController;
+use App\Http\Controllers\Admin\TagController as AdminTagController;
+use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\ArchiveController;
 use App\Http\Controllers\AuthorController;
 use App\Http\Controllers\BookmarkController;
@@ -111,6 +119,62 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+});
+
+// Admin & Moderation Routes (Moderators & Admins)
+Route::middleware(['auth', 'not.banned', 'role:admin,moderator'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/', [AdminDashboardController::class, 'index'])->name('dashboard');
+
+    // Posts Moderation
+    Route::get('/posts', [AdminPostController::class, 'index'])->name('posts.index');
+    Route::post('/posts/{post}/feature', [AdminPostController::class, 'feature'])->name('posts.feature');
+    Route::post('/posts/{post}/unpublish', [AdminPostController::class, 'unpublish'])->name('posts.unpublish');
+    Route::delete('/posts/{post}', [AdminPostController::class, 'destroy'])->name('posts.destroy');
+    Route::post('/posts/{id}/restore', [AdminPostController::class, 'restore'])->name('posts.restore');
+
+    // Reports & Moderation Queue
+    Route::get('/reports', [AdminReportController::class, 'index'])->name('reports.index');
+    Route::post('/reports/{report}/dismiss', [AdminReportController::class, 'dismiss'])->name('reports.dismiss');
+    Route::post('/reports/{report}/hide', [AdminReportController::class, 'hideContent'])->name('reports.hide');
+    Route::post('/reports/{report}/warn', [AdminReportController::class, 'warnUser'])->name('reports.warn');
+    Route::post('/reports/{report}/ban', [AdminReportController::class, 'banUser'])->name('reports.ban');
+
+    // Users Management
+    Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
+    Route::get('/users/{user}', [AdminUserController::class, 'show'])->name('users.show');
+    Route::post('/users/{user}/ban', [AdminUserController::class, 'ban'])->name('users.ban');
+    Route::post('/users/{user}/unban', [AdminUserController::class, 'unban'])->name('users.unban');
+
+    // Categories Management (View, Create, Edit)
+    Route::get('/categories', [AdminCategoryController::class, 'index'])->name('categories.index');
+    Route::post('/categories', [AdminCategoryController::class, 'store'])->name('categories.store');
+    Route::put('/categories/{category}', [AdminCategoryController::class, 'update'])->name('categories.update');
+
+    // Tags Management (View, Create, Edit)
+    Route::get('/tags', [AdminTagController::class, 'index'])->name('tags.index');
+    Route::post('/tags', [AdminTagController::class, 'store'])->name('tags.store');
+    Route::put('/tags/{tag}', [AdminTagController::class, 'update'])->name('tags.update');
+});
+
+// Admin-Only Routes (Admins Only)
+Route::middleware(['auth', 'not.banned', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
+    // User Role Changes
+    Route::post('/users/{user}/role', [AdminUserController::class, 'updateRole'])->name('users.role');
+
+    // Category Deletion & Reordering
+    Route::post('/categories/reorder', [AdminCategoryController::class, 'reorder'])->name('categories.reorder');
+    Route::delete('/categories/{category}', [AdminCategoryController::class, 'destroy'])->name('categories.destroy');
+
+    // Tag Merging & Deletion
+    Route::post('/tags/{tag}/merge', [AdminTagController::class, 'merge'])->name('tags.merge');
+    Route::delete('/tags/{tag}', [AdminTagController::class, 'destroy'])->name('tags.destroy');
+
+    // Site Settings
+    Route::get('/settings', [AdminSettingController::class, 'index'])->name('settings.index');
+    Route::post('/settings', [AdminSettingController::class, 'update'])->name('settings.update');
+
+    // Audit Logs
+    Route::get('/audit-logs', [AdminAuditLogController::class, 'index'])->name('audit-logs.index');
 });
 
 require __DIR__.'/auth.php';

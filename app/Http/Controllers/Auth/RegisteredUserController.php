@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\SettingService;
+use App\Services\SpamProtectionService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -30,8 +32,17 @@ class RegisteredUserController extends Controller
      *
      * @throws ValidationException
      */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, SettingService $settingService, SpamProtectionService $spamProtectionService): RedirectResponse
     {
+        if (! $settingService->get('signups_enabled', true)) {
+            throw ValidationException::withMessages([
+                'email' => 'New user registrations are currently disabled.',
+            ]);
+        }
+
+        $spamProtectionService->checkHoneypot($request);
+        $spamProtectionService->validateBlockedWords((string) $request->name, (string) $request->username);
+
         $request->validate([
             'name' => 'required|string|max:255',
             'username' => [

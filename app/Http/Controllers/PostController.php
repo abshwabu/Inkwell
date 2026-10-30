@@ -12,6 +12,7 @@ use App\Models\PostView;
 use App\Models\Tag;
 use App\Services\BotDetectorService;
 use App\Services\ContentSanitizerService;
+use App\Services\SpamProtectionService;
 use App\Services\TableOfContentsService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -28,7 +29,8 @@ class PostController extends Controller
     public function __construct(
         protected ContentSanitizerService $sanitizer,
         protected BotDetectorService $botDetector,
-        protected TableOfContentsService $tocService
+        protected TableOfContentsService $tocService,
+        protected SpamProtectionService $spamProtectionService
     ) {}
 
     /**
@@ -220,6 +222,8 @@ class PostController extends Controller
      */
     public function store(StorePostRequest $request): RedirectResponse
     {
+        $this->spamProtectionService->checkHoneypot($request);
+
         $validated = $request->validated();
 
         $rawHtml = $validated['content_html'] ?? '';
@@ -245,6 +249,8 @@ class PostController extends Controller
 
         $title = ! empty(trim($validated['title'] ?? '')) ? trim($validated['title']) : 'Untitled Draft';
         $excerpt = $validated['excerpt'] ?? Str::limit(strip_tags($sanitizedHtml), 160);
+
+        $this->spamProtectionService->validateBlockedWords($title, $rawHtml);
 
         // If finalizing an existing autosaved draft
         if (! empty($validated['id'])) {
@@ -273,6 +279,8 @@ class PostController extends Controller
 
             return redirect()->route($status === PostStatus::PUBLISHED ? 'posts.show' : 'dashboard', $status === PostStatus::PUBLISHED ? $post->slug : []);
         }
+
+        $this->spamProtectionService->checkDailyPostLimit(Auth::user());
 
         $createData = [
             'user_id' => Auth::id(),
@@ -348,6 +356,8 @@ class PostController extends Controller
 
         $title = ! empty(trim($validated['title'] ?? '')) ? trim($validated['title']) : $post->title;
         $excerpt = $validated['excerpt'] ?? Str::limit(strip_tags($sanitizedHtml), 160);
+
+        $this->spamProtectionService->validateBlockedWords($title, $rawHtml);
 
         $updateData = [
             'title' => $title,

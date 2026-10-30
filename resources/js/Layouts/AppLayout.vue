@@ -195,6 +195,13 @@ const handleCategorySelect = (category) => {
                                 <DropdownLink :href="route('dashboard')">
                                     Dashboard
                                 </DropdownLink>
+                                <DropdownLink
+                                    v-if="page.props.auth.user.role === 'admin' || page.props.auth.user.role === 'moderator'"
+                                    :href="route('admin.dashboard')"
+                                    class="text-indigo-600 font-semibold dark:text-indigo-400"
+                                >
+                                    Admin Console
+                                </DropdownLink>
                                 <DropdownLink :href="route('bookmarks.index')">
                                     Reading List
                                 </DropdownLink>
@@ -328,6 +335,13 @@ const handleCategorySelect = (category) => {
                             class="block py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 dark:text-gray-200"
                         >
                             Following
+                        </Link>
+                        <Link
+                            v-if="page.props.auth.user.role === 'admin' || page.props.auth.user.role === 'moderator'"
+                            :href="route('admin.dashboard')"
+                            class="block py-2 text-sm font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                        >
+                            Admin Console
                         </Link>
                         <Link
                             :href="route('profile.edit')"

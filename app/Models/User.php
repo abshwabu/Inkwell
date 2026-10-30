@@ -43,6 +43,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'avatar_path',
         'role',
         'is_banned',
+        'ban_reason',
         'email_digest_enabled',
     ];
 
@@ -197,5 +198,13 @@ class User extends Authenticatable implements MustVerifyEmail
     public function reports(): HasMany
     {
         return $this->hasMany(Report::class);
+    }
+
+    /**
+     * Audit log actions performed by this user.
+     */
+    public function auditLogs(): HasMany
+    {
+        return $this->hasMany(AuditLog::class);
     }
 }
