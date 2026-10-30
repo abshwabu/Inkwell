@@ -5,6 +5,7 @@ use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\FollowController;
+use App\Http\Controllers\ImageUploadController;
 use App\Http\Controllers\LikeController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfileController;
@@ -53,6 +54,10 @@ Route::get('/@{username}', [AuthorController::class, 'show'])
 Route::middleware(['auth', 'not.banned'])->group(function () {
     Route::get('/write', [PostController::class, 'create'])->name('posts.create');
     Route::post('/posts', [PostController::class, 'store'])->name('posts.store');
+    Route::post('/posts/autosave', [PostController::class, 'autosave'])->name('posts.autosave');
+    Route::post('/uploads/images', [ImageUploadController::class, 'store'])
+        ->middleware('throttle:30,1')
+        ->name('uploads.images');
     Route::get('/posts/{post:slug}/edit', [PostController::class, 'edit'])->name('posts.edit');
     Route::put('/posts/{post:slug}', [PostController::class, 'update'])->name('posts.update');
     Route::delete('/posts/{post:slug}', [PostController::class, 'destroy'])->name('posts.destroy');

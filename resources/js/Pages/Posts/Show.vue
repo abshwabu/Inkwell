@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import PostContent from '@/Components/PostContent.vue';
 import { ref } from 'vue';
 
 const props = defineProps({
@@ -208,10 +209,7 @@ const deletePost = () => {
             </div>
 
             <!-- Post Body -->
-            <div
-                class="prose prose-indigo lg:prose-lg max-w-none mt-10 dark:prose-invert leading-relaxed"
-                v-html="post.content_html"
-            ></div>
+            <PostContent :html="post.content_html" class="mt-10" />
 
             <!-- Tags -->
             <div v-if="post.tags && post.tags.length > 0" class="mt-10 flex flex-wrap gap-2 border-t border-gray-100 pt-6 dark:border-gray-800">

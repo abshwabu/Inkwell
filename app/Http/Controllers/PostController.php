@@ -6,6 +6,8 @@ use App\Enums\PostStatus;
 use App\Models\Category;
 use App\Models\Post;
 use App\Models\Tag;
+use App\Services\ContentSanitizerService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -16,6 +18,10 @@ use Inertia\Response;
 
 class PostController extends Controller
 {
+    public function __construct(
+        protected ContentSanitizerService $sanitizer
+    ) {}
+
     /**
      * Display a published post publicly.
      */
@@ -57,13 +63,12 @@ class PostController extends Controller
     }
 
     /**
-     * Store a newly created post (Auth required).
+     * Store a newly created post (or finalize an autosaved draft).
      */
     public function store(Request $request): RedirectResponse
     {
-        Gate::authorize('create', Post::class);
-
         $validated = $request->validate([
+            'id' => 'nullable|integer|exists:posts,id',
             'title' => 'required|string|max:255',
             'category_id' => 'nullable|exists:categories,id',
             'excerpt' => 'nullable|string|max:500',
@@ -75,17 +80,47 @@ class PostController extends Controller
             'status' => 'nullable|string|in:draft,published',
         ]);
 
+        $sanitizedHtml = $this->sanitizer->sanitize($validated['content_html']);
+        if (empty($sanitizedHtml) && ! empty($validated['content_json'])) {
+            $sanitizedHtml = $this->sanitizer->sanitize($this->sanitizer->renderFromJSON($validated['content_json']));
+        }
+
         $status = ($validated['status'] ?? 'draft') === 'published' ? PostStatus::PUBLISHED : PostStatus::DRAFT;
         $publishedAt = $status === PostStatus::PUBLISHED ? now() : null;
+
+        // If updating an existing autosaved draft
+        if (! empty($validated['id'])) {
+            $post = Post::findOrFail($validated['id']);
+            Gate::authorize('update', $post);
+
+            $post->update([
+                'title' => $validated['title'],
+                'category_id' => $validated['category_id'] ?? null,
+                'excerpt' => $validated['excerpt'] ?? Str::limit(strip_tags($sanitizedHtml), 160),
+                'cover_image_path' => $validated['cover_image_path'] ?? null,
+                'content_json' => $validated['content_json'] ?? null,
+                'content_html' => $sanitizedHtml,
+                'status' => $status,
+                'published_at' => $publishedAt ?? $post->published_at,
+            ]);
+
+            if (isset($validated['tags'])) {
+                $post->tags()->sync($validated['tags']);
+            }
+
+            return redirect()->route('posts.show', $post->slug);
+        }
+
+        Gate::authorize('create', Post::class);
 
         $post = Post::create([
             'user_id' => Auth::id(),
             'category_id' => $validated['category_id'] ?? null,
             'title' => $validated['title'],
-            'excerpt' => $validated['excerpt'] ?? Str::limit(strip_tags($validated['content_html']), 160),
+            'excerpt' => $validated['excerpt'] ?? Str::limit(strip_tags($sanitizedHtml), 160),
             'cover_image_path' => $validated['cover_image_path'] ?? null,
             'content_json' => $validated['content_json'] ?? null,
-            'content_html' => $validated['content_html'],
+            'content_html' => $sanitizedHtml,
             'status' => $status,
             'published_at' => $publishedAt,
         ]);
@@ -129,22 +164,106 @@ class PostController extends Controller
             'content_html' => 'required|string',
             'tags' => 'nullable|array',
             'tags.*' => 'exists:tags,id',
+            'status' => 'nullable|string|in:draft,published',
         ]);
 
-        $post->update([
+        $sanitizedHtml = $this->sanitizer->sanitize($validated['content_html']);
+        if (empty($sanitizedHtml) && ! empty($validated['content_json'])) {
+            $sanitizedHtml = $this->sanitizer->sanitize($this->sanitizer->renderFromJSON($validated['content_json']));
+        }
+
+        $updateData = [
             'title' => $validated['title'],
             'category_id' => $validated['category_id'] ?? null,
-            'excerpt' => $validated['excerpt'] ?? Str::limit(strip_tags($validated['content_html']), 160),
+            'excerpt' => $validated['excerpt'] ?? Str::limit(strip_tags($sanitizedHtml), 160),
             'cover_image_path' => $validated['cover_image_path'] ?? null,
             'content_json' => $validated['content_json'] ?? null,
-            'content_html' => $validated['content_html'],
-        ]);
+            'content_html' => $sanitizedHtml,
+        ];
+
+        if (isset($validated['status'])) {
+            $newStatus = $validated['status'] === 'published' ? PostStatus::PUBLISHED : PostStatus::DRAFT;
+            $updateData['status'] = $newStatus;
+            if ($newStatus === PostStatus::PUBLISHED && ! $post->published_at) {
+                $updateData['published_at'] = now();
+            }
+        }
+
+        $post->update($updateData);
 
         if (isset($validated['tags'])) {
             $post->tags()->sync($validated['tags']);
         }
 
         return redirect()->route('posts.show', $post->slug);
+    }
+
+    /**
+     * Autosave post draft every 20 seconds.
+     */
+    public function autosave(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'id' => 'nullable|integer|exists:posts,id',
+            'title' => 'nullable|string|max:255',
+            'category_id' => 'nullable|exists:categories,id',
+            'excerpt' => 'nullable|string|max:500',
+            'cover_image_path' => 'nullable|string|max:1000',
+            'content_json' => 'nullable|array',
+            'content_html' => 'nullable|string',
+            'tags' => 'nullable|array',
+            'tags.*' => 'exists:tags,id',
+        ]);
+
+        $rawHtml = $validated['content_html'] ?? '';
+        if (empty($rawHtml) && ! empty($validated['content_json'])) {
+            $rawHtml = $this->sanitizer->renderFromJSON($validated['content_json']);
+        }
+        $sanitizedHtml = $this->sanitizer->sanitize($rawHtml);
+
+        $title = ! empty(trim($validated['title'] ?? '')) ? trim($validated['title']) : 'Untitled Draft';
+
+        if (! empty($validated['id'])) {
+            $post = Post::findOrFail($validated['id']);
+            Gate::authorize('update', $post);
+
+            $post->update([
+                'title' => $title,
+                'category_id' => $validated['category_id'] ?? $post->category_id,
+                'excerpt' => $validated['excerpt'] ?? $post->excerpt,
+                'cover_image_path' => $validated['cover_image_path'] ?? $post->cover_image_path,
+                'content_json' => $validated['content_json'] ?? $post->content_json,
+                'content_html' => $sanitizedHtml,
+            ]);
+
+            if (isset($validated['tags'])) {
+                $post->tags()->sync($validated['tags']);
+            }
+        } else {
+            Gate::authorize('create', Post::class);
+
+            $post = Post::create([
+                'user_id' => Auth::id(),
+                'title' => $title,
+                'category_id' => $validated['category_id'] ?? null,
+                'excerpt' => $validated['excerpt'] ?? null,
+                'cover_image_path' => $validated['cover_image_path'] ?? null,
+                'content_json' => $validated['content_json'] ?? null,
+                'content_html' => $sanitizedHtml,
+                'status' => PostStatus::DRAFT,
+                'published_at' => null,
+            ]);
+
+            if (! empty($validated['tags'])) {
+                $post->tags()->sync($validated['tags']);
+            }
+        }
+
+        return response()->json([
+            'id' => $post->id,
+            'slug' => $post->slug,
+            'saved_at' => now()->toIso8601String(),
+        ]);
     }
 
     /**
