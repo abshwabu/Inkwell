@@ -142,6 +142,14 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Check if user is following target user.
+     */
+    public function isFollowing(User $user): bool
+    {
+        return $this->following()->where('followed_id', $user->id)->exists();
+    }
+
+    /**
      * Users who are following this user.
      */
     public function followers(): BelongsToMany

@@ -1,5 +1,6 @@
 <script setup>
-import { Head, Link } from '@inertiajs/vue3';
+import { ref, watch } from 'vue';
+import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -12,6 +13,42 @@ const props = defineProps({
         required: true,
     },
 });
+
+const allPosts = ref([...props.posts.data]);
+const nextPageUrl = ref(props.posts.next_page_url);
+const isLoadingMore = ref(false);
+
+watch(
+    () => props.posts,
+    (newPosts) => {
+        allPosts.value = [...newPosts.data];
+        nextPageUrl.value = newPosts.next_page_url;
+    }
+);
+
+const loadMore = () => {
+    if (!nextPageUrl.value || isLoadingMore.value) return;
+
+    isLoadingMore.value = true;
+    router.get(
+        nextPageUrl.value,
+        {},
+        {
+            preserveState: true,
+            preserveScroll: true,
+            only: ['posts'],
+            onSuccess: (page) => {
+                const incoming = page.props.posts;
+                allPosts.value.push(...incoming.data);
+                nextPageUrl.value = incoming.next_page_url;
+                isLoadingMore.value = false;
+            },
+            onError: () => {
+                isLoadingMore.value = false;
+            },
+        }
+    );
+};
 </script>
 
 <template>
@@ -30,7 +67,7 @@ const props = defineProps({
                         {{ category.name }}
                     </h1>
                 </div>
-                <p v-if="category.description" class="mt-3 text-base text-gray-600 dark:text-gray-300 max-w-2xl">
+                <p v-if="category.description" class="mt-3 text-base text-gray-600 dark:text-gray-300 max-w-2xl leading-relaxed">
                     {{ category.description }}
                 </p>
             </div>
@@ -38,7 +75,7 @@ const props = defineProps({
             <!-- Posts List -->
             <div class="mt-8 space-y-6">
                 <article
-                    v-for="post in posts.data"
+                    v-for="post in allPosts"
                     :key="post.id"
                     class="rounded-2xl border border-gray-200/80 bg-white p-6 shadow-sm hover:border-indigo-300 transition dark:border-gray-800 dark:bg-gray-900"
                 >
@@ -55,7 +92,7 @@ const props = defineProps({
                             </div>
 
                             <h3 class="mt-2 font-serif text-xl font-bold tracking-tight text-gray-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400 transition">
-                                <Link :href="route('posts.show', post.slug)">
+                                <Link :href="route('posts.show.canonical', { category_slug: category.slug, post_slug: post.slug })">
                                     {{ post.title }}
                                 </Link>
                             </h3>
@@ -79,23 +116,22 @@ const props = defineProps({
                     </div>
                 </article>
 
-                <div v-if="posts.data.length === 0" class="rounded-xl border border-dashed border-gray-300 p-12 text-center dark:border-gray-800">
+                <div v-if="allPosts.length === 0" class="rounded-2xl border border-dashed border-gray-300 p-12 text-center dark:border-gray-800">
                     <p class="text-sm text-gray-500">No published stories in this category yet.</p>
                 </div>
             </div>
 
-            <!-- Pagination -->
-            <div v-if="posts.links && posts.links.length > 3" class="mt-8 flex justify-center gap-1">
-                <Link
-                    v-for="(link, i) in posts.links"
-                    :key="i"
-                    :href="link.url || '#'"
-                    :class="[
-                        link.active ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200',
-                        'px-3.5 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 font-medium'
-                    ]"
-                    v-html="link.label"
-                />
+            <!-- Load More Button -->
+            <div v-if="nextPageUrl" class="mt-10 flex justify-center">
+                <button
+                    type="button"
+                    @click="loadMore"
+                    :disabled="isLoadingMore"
+                    class="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-6 py-2.5 text-xs font-semibold text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition"
+                >
+                    <span v-if="isLoadingMore">Loading more stories...</span>
+                    <span v-else>Load more stories</span>
+                </button>
             </div>
         </div>
     </AppLayout>

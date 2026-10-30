@@ -2,7 +2,7 @@
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
-defineProps({
+const props = defineProps({
     canLogin: {
         type: Boolean,
         default: true,
@@ -10,6 +10,14 @@ defineProps({
     canRegister: {
         type: Boolean,
         default: true,
+    },
+    posts: {
+        type: Object,
+        default: null,
+    },
+    categories: {
+        type: Array,
+        default: () => [],
     },
 });
 
@@ -51,16 +59,6 @@ const featuredArticles = [
         date: 'Oct 30, 2026',
     },
 ];
-
-const trendingTopics = [
-    'Technology',
-    'Design',
-    'Culture',
-    'Writing',
-    'Science',
-    'Architecture',
-    'Productivity',
-];
 </script>
 
 <template>
@@ -97,26 +95,32 @@ const trendingTopics = [
                         >
                             Explore Articles
                         </a>
+                        <Link
+                            :href="route('archive.index')"
+                            class="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-6 py-3 text-base font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                        >
+                            The Archives
+                        </Link>
                     </div>
                 </div>
             </div>
         </section>
 
         <!-- Topic Pills -->
-        <section class="border-b border-gray-200/80 bg-white/70 py-4 dark:border-gray-800 dark:bg-gray-900/60">
+        <section v-if="categories && categories.length > 0" class="border-b border-gray-200/80 bg-white/70 py-4 dark:border-gray-800 dark:bg-gray-900/60">
             <div class="mx-auto flex max-w-7xl items-center gap-3 overflow-x-auto px-4 sm:px-6 lg:px-8">
                 <span class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 shrink-0">
-                    Trending:
+                    Topics:
                 </span>
                 <div class="flex items-center gap-2">
-                    <button
-                        v-for="topic in trendingTopics"
-                        :key="topic"
-                        type="button"
-                        class="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 transition hover:border-indigo-400 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-indigo-500 dark:hover:text-indigo-400 whitespace-nowrap"
+                    <Link
+                        v-for="cat in categories"
+                        :key="cat.id"
+                        :href="route('categories.show', cat.slug)"
+                        class="rounded-full border border-gray-200 bg-white px-3.5 py-1 text-xs font-medium text-gray-600 transition hover:border-indigo-400 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-indigo-500 dark:hover:text-indigo-400 whitespace-nowrap shadow-xs"
                     >
-                        {{ topic }}
-                    </button>
+                        {{ cat.name }}
+                    </Link>
                 </div>
             </div>
         </section>
@@ -133,9 +137,74 @@ const trendingTopics = [
                             Discover freshly penned insights from our writers across the globe.
                         </p>
                     </div>
+                    <Link
+                        :href="route('search')"
+                        class="text-sm font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                    >
+                        Search all stories →
+                    </Link>
                 </div>
 
-                <div class="grid grid-cols-1 gap-8 md:grid-cols-3">
+                <!-- When dynamic posts are available from DB -->
+                <div v-if="posts && posts.data && posts.data.length > 0" class="grid grid-cols-1 gap-8 md:grid-cols-3">
+                    <article
+                        v-for="post in posts.data"
+                        :key="post.id"
+                        class="group flex flex-col justify-between rounded-2xl border border-gray-200/80 bg-white p-6 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-md dark:border-gray-800 dark:bg-gray-900 dark:hover:border-indigo-900"
+                    >
+                        <div>
+                            <div v-if="post.cover_image_path" class="mb-4 h-44 w-full overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800">
+                                <img :src="post.cover_image_path" :alt="post.title" class="h-full w-full object-cover group-hover:scale-105 transition duration-300" />
+                            </div>
+
+                            <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                                <Link
+                                    v-if="post.category"
+                                    :href="route('categories.show', post.category.slug)"
+                                    class="rounded-full bg-indigo-50 px-2.5 py-0.5 font-medium text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 hover:underline"
+                                >
+                                    {{ post.category.name }}
+                                </Link>
+                                <span v-else>Story</span>
+                                <span>{{ post.reading_time_minutes }} min read</span>
+                            </div>
+
+                            <h3 class="mt-4 font-serif text-xl font-bold tracking-tight text-gray-900 transition group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400">
+                                <Link :href="route('posts.show.canonical', { category_slug: post.category ? post.category.slug : 'story', post_slug: post.slug })">
+                                    {{ post.title }}
+                                </Link>
+                            </h3>
+
+                            <p class="mt-3 text-sm leading-relaxed text-gray-600 line-clamp-3 dark:text-gray-300">
+                                {{ post.excerpt }}
+                            </p>
+                        </div>
+
+                        <div class="mt-6 flex items-center justify-between border-t border-gray-100 pt-4 dark:border-gray-800">
+                            <div class="flex items-center gap-3">
+                                <img
+                                    :src="post.user.avatar_url"
+                                    :alt="post.user.name"
+                                    class="h-9 w-9 rounded-full object-cover"
+                                />
+                                <div class="text-xs">
+                                    <Link :href="route('author.show', post.user.username)" class="font-semibold text-gray-900 dark:text-white hover:text-indigo-600">
+                                        {{ post.user.name }}
+                                    </Link>
+                                    <p class="text-gray-500 dark:text-gray-400">
+                                        {{ new Date(post.published_at).toLocaleDateString() }}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 text-xs text-gray-400">
+                                <span>{{ post.views_count }} views</span>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+
+                <!-- Static fallback if DB has no posts yet -->
+                <div v-else class="grid grid-cols-1 gap-8 md:grid-cols-3">
                     <article
                         v-for="article in featuredArticles"
                         :key="article.id"
@@ -170,6 +239,20 @@ const trendingTopics = [
                             </div>
                         </div>
                     </article>
+                </div>
+
+                <!-- Pagination links on home if available -->
+                <div v-if="posts && posts.links && posts.links.length > 3" class="mt-12 flex justify-center gap-1">
+                    <Link
+                        v-for="(link, i) in posts.links"
+                        :key="i"
+                        :href="link.url || '#'"
+                        :class="[
+                            link.active ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200',
+                            'px-3.5 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 font-medium'
+                        ]"
+                        v-html="link.label"
+                    />
                 </div>
             </div>
         </section>

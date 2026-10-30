@@ -22,7 +22,7 @@ const categories = [
 
 const handleSearch = () => {
     if (searchQuery.value.trim()) {
-        router.get('/', { search: searchQuery.value.trim() }, { preserveState: true });
+        router.get(route('search'), { q: searchQuery.value.trim() });
     }
 };
 
@@ -355,7 +355,17 @@ const handleCategorySelect = (category) => {
                             Explore Topics
                         </h3>
                         <ul class="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                            <li v-for="cat in categories.slice(1, 6)" :key="cat.slug">
+                            <li>
+                                <Link :href="route('search')" class="transition hover:text-indigo-600 dark:hover:text-indigo-400">
+                                    Search & Discover
+                                </Link>
+                            </li>
+                            <li>
+                                <Link :href="route('archive.index')" class="transition hover:text-indigo-600 dark:hover:text-indigo-400">
+                                    The Archives
+                                </Link>
+                            </li>
+                            <li v-for="cat in categories.slice(1, 5)" :key="cat.slug">
                                 <button
                                     type="button"
                                     @click="handleCategorySelect(cat)"

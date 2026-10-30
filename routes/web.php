@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ArchiveController;
 use App\Http\Controllers\AuthorController;
 use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\CategoryController;
@@ -14,6 +15,7 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\TagController;
 use App\Models\Category;
 use App\Models\Post;
+use App\Models\Tag;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -44,9 +46,28 @@ Route::get('/', function (Request $request) {
 })->name('home');
 
 Route::get('/search', [SearchController::class, 'index'])->name('search');
-Route::get('/categories/{category:slug}', [CategoryController::class, 'show'])->name('categories.show');
-Route::get('/tags/{tag:slug}', [TagController::class, 'show'])->name('tags.show');
+
+// Category routes (/category/{slug} and alias /categories/{slug})
+Route::get('/category/{category:slug}', [CategoryController::class, 'show'])->name('categories.show');
+Route::get('/categories/{category:slug}', [CategoryController::class, 'show']);
+
+// Tag routes (/tag/{slug} and alias /tags/{slug})
+Route::get('/tag/{tag:slug}', [TagController::class, 'show'])->name('tags.show');
+Route::get('/tags/{tag:slug}', [TagController::class, 'show']);
+
+// Archives (/archive and /archive/{year}/{month?})
+Route::get('/archive', [ArchiveController::class, 'index'])->name('archive.index');
+Route::get('/archive/{year}/{month?}', [ArchiveController::class, 'show'])
+    ->where(['year' => '[0-9]{4}', 'month' => '[0-9]{1,2}'])
+    ->name('archive.show');
+
+// Short post route /p/{slug} and legacy /posts/{post:slug} - 301 redirect to canonical
+Route::get('/p/{post_slug}', [PostController::class, 'showShort'])
+    ->where('post_slug', '[a-zA-Z0-9_\-]+')
+    ->name('posts.show.short');
+
 Route::get('/posts/{post:slug}', [PostController::class, 'show'])->name('posts.show');
+
 Route::get('/@{username}', [AuthorController::class, 'show'])
     ->where('username', '[a-zA-Z0-9_\-]+')
     ->name('author.show');
@@ -87,3 +108,8 @@ Route::middleware('auth')->group(function () {
 });
 
 require __DIR__.'/auth.php';
+
+// Canonical post route /{category_slug}/{post_slug} (Must be at the end to prevent collisions)
+Route::get('/{category_slug}/{post_slug}', [PostController::class, 'showCanonical'])
+    ->where(['category_slug' => '[a-zA-Z0-9_\-]+', 'post_slug' => '[a-zA-Z0-9_\-]+'])
+    ->name('posts.show.canonical');

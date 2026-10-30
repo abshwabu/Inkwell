@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\Post;
+use App\Observers\PostFtsObserver;
 use Illuminate\Database\Events\ConnectionEstablished;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Vite;
@@ -23,6 +25,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Vite::prefetch(concurrency: 3);
+
+        Post::observe(PostFtsObserver::class);
 
         Event::listen(ConnectionEstablished::class, function (ConnectionEstablished $event) {
             if ($event->connection->getDriverName() === 'sqlite') {

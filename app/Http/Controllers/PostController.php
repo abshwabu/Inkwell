@@ -5,10 +5,14 @@ namespace App\Http\Controllers;
 use App\Enums\PostStatus;
 use App\Http\Requests\StorePostRequest;
 use App\Http\Requests\UpdatePostRequest;
+use App\Jobs\IncrementPostViewJob;
 use App\Models\Category;
 use App\Models\Post;
+use App\Models\PostView;
 use App\Models\Tag;
+use App\Services\BotDetectorService;
 use App\Services\ContentSanitizerService;
+use App\Services\TableOfContentsService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -22,15 +26,102 @@ use Inertia\Response;
 class PostController extends Controller
 {
     public function __construct(
-        protected ContentSanitizerService $sanitizer
+        protected ContentSanitizerService $sanitizer,
+        protected BotDetectorService $botDetector,
+        protected TableOfContentsService $tocService
     ) {}
 
     /**
-     * Display a published post publicly.
+     * Display a published post publicly at canonical URL /{category-slug}/{post-slug}.
      */
-    public function show(Post $post): Response
+    public function showCanonical(Request $request, string $category_slug, string $post_slug): Response|RedirectResponse
+    {
+        $post = Post::withTrashed()->where('slug', $post_slug)->first();
+        if (! $post && is_numeric($post_slug)) {
+            $post = Post::withTrashed()->find((int) $post_slug);
+        }
+
+        if ($post && $post->trashed()) {
+            abort(410, 'This story has been permanently removed.');
+        }
+
+        if (! $post) {
+            abort(404, 'Story not found.');
+        }
+
+        $canonicalCategory = $post->category ? $post->category->slug : 'story';
+
+        // 301 Redirect if category slug in URL doesn't match canonical
+        if ($category_slug !== $canonicalCategory) {
+            return redirect()->route('posts.show.canonical', [
+                'category_slug' => $canonicalCategory,
+                'post_slug' => $post->slug,
+            ], 301);
+        }
+
+        return $this->renderPostView($request, $post);
+    }
+
+    /**
+     * Short post route /p/{slug} with 301 redirect to canonical /{category-slug}/{post-slug}.
+     */
+    public function showShort(Request $request, string $post_slug): RedirectResponse
+    {
+        $post = Post::withTrashed()->where('slug', $post_slug)->first();
+        if (! $post && is_numeric($post_slug)) {
+            $post = Post::withTrashed()->find((int) $post_slug);
+        }
+
+        if ($post && $post->trashed()) {
+            abort(410, 'This story has been permanently removed.');
+        }
+
+        if (! $post) {
+            abort(404, 'Story not found.');
+        }
+
+        $categorySlug = $post->category ? $post->category->slug : 'story';
+
+        return redirect()->route('posts.show.canonical', [
+            'category_slug' => $categorySlug,
+            'post_slug' => $post->slug,
+        ], 301);
+    }
+
+    /**
+     * Legacy route /posts/{post:slug}.
+     */
+    public function show(Request $request, Post $post): Response
+    {
+        return $this->renderPostView($request, $post);
+    }
+
+    /**
+     * Common rendering pipeline for public story reading.
+     */
+    protected function renderPostView(Request $request, Post $post): Response
     {
         Gate::authorize('view', $post);
+
+        // Deduplicated bot-filtered view count tracking
+        if (! $this->botDetector->isBot($request)) {
+            $userId = Auth::id();
+            $sessionHash = hash('sha256', ($request->session()->getId() ?? 'guest') . '|' . ($request->ip() ?? '') . '|' . ($request->header('User-Agent') ?? ''));
+
+            $alreadyViewed = PostView::where('post_id', $post->id)
+                ->where(function ($q) use ($sessionHash, $userId) {
+                    $q->where('session_hash', $sessionHash);
+                    if ($userId) {
+                        $q->orWhere('user_id', $userId);
+                    }
+                })
+                ->where('viewed_at', '>=', now()->subHours(24))
+                ->exists();
+
+            if (! $alreadyViewed) {
+                IncrementPostViewJob::dispatch($post->id, $userId, $sessionHash);
+            }
+        }
 
         $post->load([
             'user',
@@ -39,11 +130,63 @@ class PostController extends Controller
             'comments' => fn ($query) => $query->visible()->whereNull('parent_id')->with(['user', 'replies.user'])->latest(),
         ]);
 
+        // Auto-generate Table of Contents from headings
+        $tocResult = $this->tocService->extractAndInject($post->content_html ?? '');
+        $post->content_html = $tocResult['html'];
+        $toc = $tocResult['toc'];
+
+        // Related posts (same category or sharing tags, excluding current post)
+        $relatedPosts = Post::published()
+            ->where('id', '!=', $post->id)
+            ->where(function ($q) use ($post) {
+                if ($post->category_id) {
+                    $q->where('category_id', $post->category_id);
+                }
+                if ($post->tags->isNotEmpty()) {
+                    $q->orWhereHas('tags', fn ($tq) => $tq->whereIn('tags.id', $post->tags->pluck('id')));
+                }
+            })
+            ->with(['user', 'category'])
+            ->popular()
+            ->take(3)
+            ->get(['id', 'title', 'slug', 'excerpt', 'cover_image_path', 'category_id', 'user_id', 'reading_time_minutes', 'published_at']);
+
+        // Previous and Next stories from same author
+        $previousPost = null;
+        $nextPost = null;
+        if ($post->published_at) {
+            $previousPost = Post::published()
+                ->where('user_id', $post->user_id)
+                ->where('id', '!=', $post->id)
+                ->where('published_at', '<', $post->published_at)
+                ->latest('published_at')
+                ->with('category')
+                ->first(['id', 'title', 'slug', 'category_id', 'published_at']);
+
+            $nextPost = Post::published()
+                ->where('user_id', $post->user_id)
+                ->where('id', '!=', $post->id)
+                ->where('published_at', '>', $post->published_at)
+                ->oldest('published_at')
+                ->with('category')
+                ->first(['id', 'title', 'slug', 'category_id', 'published_at']);
+        }
+
+        $authorFollowersCount = $post->user->followers()->count();
+        $isFollowingAuthor = Auth::check() ? Auth::user()->isFollowing($post->user) : false;
         $isLiked = Auth::check() ? Auth::user()->likedPosts()->where('post_id', $post->id)->exists() : false;
         $isBookmarked = Auth::check() ? Auth::user()->bookmarkedPosts()->where('post_id', $post->id)->exists() : false;
 
         return Inertia::render('Posts/Show', [
             'post' => $post,
+            'toc' => $toc,
+            'relatedPosts' => $relatedPosts,
+            'previousPost' => $previousPost,
+            'nextPost' => $nextPost,
+            'authorStats' => [
+                'followers_count' => $authorFollowersCount,
+                'is_following' => $isFollowingAuthor,
+            ],
             'isLiked' => $isLiked,
             'isBookmarked' => $isBookmarked,
             'canEdit' => Auth::check() && Auth::user()->can('update', $post),
