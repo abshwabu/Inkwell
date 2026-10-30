@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthorController;
 use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CommentController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FollowController;
 use App\Http\Controllers\ImageUploadController;
 use App\Http\Controllers\LikeController;
@@ -58,10 +59,13 @@ Route::middleware(['auth', 'not.banned'])->group(function () {
     Route::post('/uploads/images', [ImageUploadController::class, 'store'])
         ->middleware('throttle:30,1')
         ->name('uploads.images');
-    Route::get('/posts/{post:slug}/edit', [PostController::class, 'edit'])->name('posts.edit');
-    Route::put('/posts/{post:slug}', [PostController::class, 'update'])->name('posts.update');
-    Route::delete('/posts/{post:slug}', [PostController::class, 'destroy'])->name('posts.destroy');
-    Route::post('/posts/{post:slug}/publish', [PostController::class, 'publish'])->name('posts.publish');
+    Route::get('/posts/{post}/edit', [PostController::class, 'edit'])->name('posts.edit');
+    Route::put('/posts/{post}', [PostController::class, 'update'])->name('posts.update');
+    Route::delete('/posts/{post}', [PostController::class, 'destroy'])->name('posts.destroy');
+    Route::post('/posts/{post}/publish', [PostController::class, 'publish'])->name('posts.publish');
+    Route::post('/posts/{post}/unpublish', [PostController::class, 'unpublish'])->name('posts.unpublish');
+    Route::post('/posts/{post}/archive', [PostController::class, 'archive'])->name('posts.archive');
+    Route::post('/posts/{post}/schedule', [PostController::class, 'schedule'])->name('posts.schedule');
 
     Route::post('/posts/{post:slug}/comments', [CommentController::class, 'store'])->name('comments.store');
     Route::put('/comments/{comment}', [CommentController::class, 'update'])->name('comments.update');
@@ -74,13 +78,8 @@ Route::middleware(['auth', 'not.banned'])->group(function () {
 
 // Authenticated Settings & Dashboard
 Route::middleware('auth')->group(function () {
-    Route::get('/dashboard', function () {
-        $user = auth()->user();
-        $posts = $user->posts()->withRelations()->latest()->paginate(10);
-        return Inertia::render('Dashboard', [
-            'posts' => $posts,
-        ]);
-    })->name('dashboard');
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::post('/dashboard/bulk-action', [DashboardController::class, 'bulkAction'])->name('dashboard.bulk-action');
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');

@@ -26,6 +26,8 @@ class Post extends Model
         'slug',
         'excerpt',
         'cover_image_path',
+        'seo_title',
+        'seo_description',
         'content_json',
         'content_html',
         'reading_time_minutes',
@@ -34,6 +36,10 @@ class Post extends Model
         'views_count',
         'likes_count',
         'comments_count',
+    ];
+
+    protected $appends = [
+        'is_updated',
     ];
 
     /**
@@ -58,16 +64,41 @@ class Post extends Model
     protected static function booted(): void
     {
         static::saving(function (Post $post) {
-            // Auto-calculate reading time if not explicitly provided
-            if (empty($post->reading_time_minutes) || $post->reading_time_minutes <= 0) {
-                $rawText = strip_tags((string) $post->content_html);
-                if (empty(trim($rawText)) && !empty($post->excerpt)) {
-                    $rawText = $post->excerpt;
-                }
-                $wordCount = str_word_count($rawText);
-                $post->reading_time_minutes = max(1, (int) ceil($wordCount / 200));
+            // Compute reading_time_minutes (≈225 wpm) on save
+            $rawText = strip_tags((string) $post->content_html);
+            if (empty(trim($rawText)) && ! empty($post->excerpt)) {
+                $rawText = $post->excerpt;
             }
+            $wordCount = str_word_count($rawText);
+            $post->reading_time_minutes = max(1, (int) ceil($wordCount / 225));
         });
+    }
+
+    /**
+     * Resolve route binding by either numeric ID or slug.
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        if ($field) {
+            return parent::resolveRouteBinding($value, $field);
+        }
+
+        if (is_numeric($value)) {
+            $post = $this->where('id', $value)->first();
+            if ($post) {
+                return $post;
+            }
+        }
+
+        return $this->where('slug', $value)->firstOrFail();
+    }
+
+    /**
+     * Check if the post was updated after its original publication.
+     */
+    public function getIsUpdatedAttribute(): bool
+    {
+        return $this->published_at && $this->updated_at && $this->updated_at->gt($this->published_at->addMinutes(1));
     }
 
     /**

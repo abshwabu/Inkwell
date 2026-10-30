@@ -323,11 +323,13 @@ class RichTextEditorTest extends TestCase
     {
         $category = Category::factory()->create();
 
+        $content100Words = '<p>' . str_repeat('Inkwell is an open blogging platform designed for thoughtful writers. ', 12) . '</p><script>evil()</script><a href="https://external.com">Link</a>';
+
         // Store new post with malicious payload
         $response = $this->actingAs($this->user)->post(route('posts.store'), [
             'title' => 'Story with Malicious Payload',
             'category_id' => $category->id,
-            'content_html' => '<p>Clean text <script>evil()</script><a href="https://external.com">Link</a></p>',
+            'content_html' => $content100Words,
             'status' => 'published',
         ]);
 
@@ -337,11 +339,13 @@ class RichTextEditorTest extends TestCase
         $this->assertStringNotContainsString('<script', $post->content_html);
         $this->assertStringContainsString('rel="noopener noreferrer nofollow ugc"', $post->content_html);
 
+        $updatedContent = '<p>' . str_repeat('Updating thoughtful content for Inkwell readers across the world. ', 12) . '</p><img src=x onerror=hack()>';
+
         // Update post with malicious payload
         $updateResponse = $this->actingAs($this->user)->put(route('posts.update', $post->slug), [
             'title' => 'Updated Story',
             'category_id' => $category->id,
-            'content_html' => '<p>Updated text <img src=x onerror=hack()></p>',
+            'content_html' => $updatedContent,
         ]);
 
         $updateResponse->assertSessionHasNoErrors();

@@ -96,6 +96,9 @@ const deletePost = () => {
                 <span>{{ post.reading_time_minutes }} min read</span>
                 <span v-if="post.published_at">•</span>
                 <span v-if="post.published_at">{{ new Date(post.published_at).toLocaleDateString() }}</span>
+                <span v-if="post.is_updated" class="text-xs italic text-gray-400">
+                    (Updated {{ new Date(post.updated_at).toLocaleDateString() }})
+                </span>
                 <span
                     v-if="post.status !== 'published'"
                     class="ml-auto rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-amber-800 dark:bg-amber-950 dark:text-amber-300"

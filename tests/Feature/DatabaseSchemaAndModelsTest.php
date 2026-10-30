@@ -72,7 +72,7 @@ class DatabaseSchemaAndModelsTest extends TestCase
 
         $this->assertSame('scaling-sqlite-databases', $post1->slug);
         $this->assertSame('scaling-sqlite-databases-1', $post2->slug);
-        $this->assertSame(3, $post1->reading_time_minutes); // 450 words / 200 = ceil(2.25) = 3
+        $this->assertSame(2, $post1->reading_time_minutes); // 450 words / 225 = ceil(2.0) = 2
         $this->assertSame(1, $post2->reading_time_minutes); // min 1
     }
 
