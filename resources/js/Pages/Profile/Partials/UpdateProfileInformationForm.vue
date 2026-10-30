@@ -26,6 +26,7 @@ const form = useForm({
     email: user.email,
     bio: user.bio || '',
     avatar: null,
+    email_digest_enabled: Boolean(user.email_digest_enabled),
 });
 
 const handleAvatarChange = (e) => {
@@ -167,6 +168,25 @@ const submit = () => {
                 ></textarea>
 
                 <InputError class="mt-2" :message="form.errors.bio" />
+            </div>
+
+            <!-- Email Digest Preference -->
+            <div class="rounded-xl border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-800 dark:bg-gray-900/50">
+                <label class="flex items-start gap-3 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        v-model="form.email_digest_enabled"
+                        class="mt-0.5 rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:focus:ring-indigo-600"
+                    />
+                    <div>
+                        <span class="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            Receive Email Digest
+                        </span>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">
+                            Receive an occasional email digest of stories, discussions, and updates from authors you follow. (Off by default).
+                        </p>
+                    </div>
+                </label>
             </div>
 
             <div v-if="mustVerifyEmail && user.email_verified_at === null">

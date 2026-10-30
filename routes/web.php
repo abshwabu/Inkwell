@@ -10,9 +10,11 @@ use App\Http\Controllers\FeedController;
 use App\Http\Controllers\FollowController;
 use App\Http\Controllers\ImageUploadController;
 use App\Http\Controllers\LikeController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\TagController;
 use App\Models\Category;
@@ -73,17 +75,30 @@ Route::middleware(['auth', 'not.banned'])->group(function () {
     Route::post('/posts/{post}/schedule', [PostController::class, 'schedule'])->name('posts.schedule');
     Route::post('/posts/{post}/toggle-featured', [FeedController::class, 'toggleFeatured'])->name('posts.toggle-featured');
 
-    Route::post('/posts/{post:slug}/comments', [CommentController::class, 'store'])->name('comments.store');
+    Route::post('/posts/{post:slug}/comments', [CommentController::class, 'store'])
+        ->middleware('throttle:10,1')
+        ->name('comments.store');
     Route::put('/comments/{comment}', [CommentController::class, 'update'])->name('comments.update');
     Route::delete('/comments/{comment}', [CommentController::class, 'destroy'])->name('comments.destroy');
 
     Route::post('/posts/{post:slug}/like', [LikeController::class, 'toggle'])->name('posts.like');
     Route::post('/posts/{post:slug}/bookmark', [BookmarkController::class, 'toggle'])->name('posts.bookmark');
     Route::post('/users/{user:username}/follow', [FollowController::class, 'toggle'])->name('users.follow');
+
+    Route::post('/reports', [ReportController::class, 'store'])
+        ->middleware('throttle:10,1')
+        ->name('reports.store');
 });
 
-// Authenticated Settings, Dashboard & Onboarding
+// Authenticated Settings, Dashboard, Bookmarks, Following, Notifications & Onboarding
 Route::middleware('auth')->group(function () {
+    Route::get('/bookmarks', [BookmarkController::class, 'index'])->name('bookmarks.index');
+    Route::get('/following', [FollowController::class, 'index'])->name('following.index');
+
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
+
     Route::get('/onboarding', [PreferenceController::class, 'onboarding'])->name('onboarding');
     Route::post('/onboarding', [PreferenceController::class, 'storeOnboarding'])->name('onboarding.store');
 

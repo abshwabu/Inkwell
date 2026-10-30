@@ -43,6 +43,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'avatar_path',
         'role',
         'is_banned',
+        'email_digest_enabled',
     ];
 
     /**
@@ -67,6 +68,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'password' => 'hashed',
             'role' => UserRole::class,
             'is_banned' => 'boolean',
+            'email_digest_enabled' => 'boolean',
         ];
     }
 
@@ -187,5 +189,13 @@ class User extends Authenticatable implements MustVerifyEmail
     public function dismissedPosts(): HasMany
     {
         return $this->hasMany(PostDismissal::class);
+    }
+
+    /**
+     * Reports submitted by this user.
+     */
+    public function reports(): HasMany
+    {
+        return $this->hasMany(Report::class);
     }
 }

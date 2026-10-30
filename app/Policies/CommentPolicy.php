@@ -53,7 +53,11 @@ class CommentPolicy
             return false;
         }
 
-        return $user->id === $comment->user_id || $user->role === UserRole::ADMIN;
+        if ($user->role === UserRole::ADMIN) {
+            return true;
+        }
+
+        return $user->id === $comment->user_id && $comment->created_at && $comment->created_at->diffInMinutes(now()) <= 15;
     }
 
     /**

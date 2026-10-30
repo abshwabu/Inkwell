@@ -140,6 +140,24 @@ const handleCategorySelect = (category) => {
                     <!-- Dark Mode Toggle -->
                     <DarkModeToggle />
 
+                    <!-- Notifications Bell (Logged-in) -->
+                    <Link
+                        v-if="page.props.auth?.user"
+                        :href="route('notifications.index')"
+                        class="relative inline-flex items-center justify-center rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                        title="Notifications"
+                    >
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+                        </svg>
+                        <span
+                            v-if="page.props.auth?.unread_notifications_count > 0"
+                            class="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-gray-900"
+                        >
+                            {{ page.props.auth.unread_notifications_count > 99 ? '99+' : page.props.auth.unread_notifications_count }}
+                        </span>
+                    </Link>
+
                     <!-- Auth Links or User Menu -->
                     <template v-if="page.props.auth?.user">
                         <Dropdown align="right" width="48">
@@ -176,6 +194,12 @@ const handleCategorySelect = (category) => {
                                 </div>
                                 <DropdownLink :href="route('dashboard')">
                                     Dashboard
+                                </DropdownLink>
+                                <DropdownLink :href="route('bookmarks.index')">
+                                    Reading List
+                                </DropdownLink>
+                                <DropdownLink :href="route('following.index')">
+                                    Following
                                 </DropdownLink>
                                 <DropdownLink :href="route('author.show', page.props.auth.user.username)">
                                     Public Profile
@@ -280,6 +304,30 @@ const handleCategorySelect = (category) => {
                             class="block py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 dark:text-gray-200"
                         >
                             Dashboard
+                        </Link>
+                        <Link
+                            :href="route('notifications.index')"
+                            class="flex items-center justify-between py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 dark:text-gray-200"
+                        >
+                            <span>Notifications</span>
+                            <span
+                                v-if="page.props.auth?.unread_notifications_count > 0"
+                                class="rounded-full bg-rose-500 px-2 py-0.5 text-xs font-semibold text-white"
+                            >
+                                {{ page.props.auth.unread_notifications_count }}
+                            </span>
+                        </Link>
+                        <Link
+                            :href="route('bookmarks.index')"
+                            class="block py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 dark:text-gray-200"
+                        >
+                            Reading List
+                        </Link>
+                        <Link
+                            :href="route('following.index')"
+                            class="block py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 dark:text-gray-200"
+                        >
+                            Following
                         </Link>
                         <Link
                             :href="route('profile.edit')"

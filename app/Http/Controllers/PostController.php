@@ -127,7 +127,14 @@ class PostController extends Controller
             'user',
             'category',
             'tags',
-            'comments' => fn ($query) => $query->visible()->whereNull('parent_id')->with(['user', 'replies.user'])->latest(),
+            'comments' => fn ($query) => $query->withTrashed()
+                ->where('status', \App\Enums\CommentStatus::VISIBLE)
+                ->whereNull('parent_id')
+                ->with([
+                    'user',
+                    'replies' => fn ($rq) => $rq->withTrashed()->where('status', \App\Enums\CommentStatus::VISIBLE)->with('user')->oldest(),
+                ])
+                ->latest(),
         ]);
 
         // Auto-generate Table of Contents from headings

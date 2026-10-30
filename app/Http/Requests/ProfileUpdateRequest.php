@@ -35,6 +35,7 @@ class ProfileUpdateRequest extends FormRequest
             ],
             'bio' => ['nullable', 'string', 'max:1000'],
             'avatar' => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp,gif', 'max:5120'],
+            'email_digest_enabled' => ['sometimes', 'boolean'],
         ];
     }
 

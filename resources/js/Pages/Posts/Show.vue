@@ -1,8 +1,10 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Head, Link, useForm, usePage, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import PostContent from '@/Components/PostContent.vue';
+import ReportModal from '@/Components/ReportModal.vue';
+import axios from 'axios';
 
 const props = defineProps({
     post: {
@@ -54,9 +56,23 @@ const props = defineProps({
 const page = usePage();
 const currentUser = computed(() => page.props.auth?.user);
 
-const likeForm = useForm({});
-const bookmarkForm = useForm({});
-const followForm = useForm({});
+// Optimistic UI state
+const localIsLiked = ref(props.isLiked);
+const localLikesCount = ref(props.post.likes_count || 0);
+const localIsBookmarked = ref(props.isBookmarked);
+const localIsFollowing = ref(props.authorStats.is_following);
+const localFollowersCount = ref(props.authorStats.followers_count || 0);
+
+watch(() => props.isLiked, (val) => { localIsLiked.value = val; });
+watch(() => props.post.likes_count, (val) => { localLikesCount.value = val; });
+watch(() => props.isBookmarked, (val) => { localIsBookmarked.value = val; });
+watch(() => props.authorStats.is_following, (val) => { localIsFollowing.value = val; });
+watch(() => props.authorStats.followers_count, (val) => { localFollowersCount.value = val; });
+
+const isLiking = ref(false);
+const isBookmarking = ref(false);
+const isFollowing = ref(false);
+
 const publishForm = useForm({});
 const deleteForm = useForm({});
 
@@ -66,6 +82,25 @@ const commentForm = useForm({
 });
 
 const replyToId = ref(null);
+const replyingToAuthor = ref('');
+const editingCommentId = ref(null);
+const editBody = ref('');
+const isSavingEdit = ref(false);
+
+// Report Modal State
+const reportModalOpen = ref(false);
+const reportType = ref('post');
+const reportId = ref(props.post.id);
+const reportTitle = ref(props.post.title);
+
+const openReportModal = (type, id, title) => {
+    if (!requireAuth()) return;
+    reportType.value = type;
+    reportId.value = id;
+    reportTitle.value = title || (type === 'post' ? props.post.title : 'Comment');
+    reportModalOpen.value = true;
+};
+
 const readingProgress = ref(0);
 const activeHeadingId = ref('');
 const copySuccess = ref(false);
@@ -108,7 +143,6 @@ const copyShareLink = async () => {
             copySuccess.value = false;
         }, 3000);
     } catch {
-        // Fallback for older browsers
         const textarea = document.createElement('textarea');
         textarea.value = window.location.href;
         document.body.appendChild(textarea);
@@ -131,7 +165,7 @@ onUnmounted(() => {
     window.removeEventListener('scroll', handleScroll);
 });
 
-const requireAuth = (action) => {
+const requireAuth = () => {
     if (!currentUser.value) {
         router.visit(route('login'));
         return false;
@@ -139,25 +173,78 @@ const requireAuth = (action) => {
     return true;
 };
 
-const toggleLike = () => {
-    if (!requireAuth()) return;
-    likeForm.post(route('posts.like', props.post.slug), {
-        preserveScroll: true,
-    });
+// Optimistic Like
+const toggleLike = async () => {
+    if (!requireAuth() || isLiking.value) return;
+
+    const previousLiked = localIsLiked.value;
+    const previousCount = localLikesCount.value;
+
+    // Optimistic toggle
+    localIsLiked.value = !previousLiked;
+    localLikesCount.value += localIsLiked.value ? 1 : -1;
+    if (localLikesCount.value < 0) localLikesCount.value = 0;
+
+    isLiking.value = true;
+    try {
+        const res = await axios.post(route('posts.like', props.post.slug));
+        if (res.data?.likes_count !== undefined) {
+            localLikesCount.value = res.data.likes_count;
+            localIsLiked.value = res.data.liked;
+        }
+    } catch (e) {
+        // Rollback on failure
+        localIsLiked.value = previousLiked;
+        localLikesCount.value = previousCount;
+    } finally {
+        isLiking.value = false;
+    }
 };
 
-const toggleBookmark = () => {
-    if (!requireAuth()) return;
-    bookmarkForm.post(route('posts.bookmark', props.post.slug), {
-        preserveScroll: true,
-    });
+// Optimistic Bookmark
+const toggleBookmark = async () => {
+    if (!requireAuth() || isBookmarking.value) return;
+
+    const previousBookmarked = localIsBookmarked.value;
+    localIsBookmarked.value = !previousBookmarked;
+
+    isBookmarking.value = true;
+    try {
+        const res = await axios.post(route('posts.bookmark', props.post.slug));
+        if (res.data?.bookmarked !== undefined) {
+            localIsBookmarked.value = res.data.bookmarked;
+        }
+    } catch (e) {
+        localIsBookmarked.value = previousBookmarked;
+    } finally {
+        isBookmarking.value = false;
+    }
 };
 
-const toggleFollow = () => {
-    if (!requireAuth()) return;
-    followForm.post(route('users.follow', props.post.user.username), {
-        preserveScroll: true,
-    });
+// Optimistic Follow
+const toggleFollow = async () => {
+    if (!requireAuth() || isFollowing.value) return;
+
+    const previousFollowing = localIsFollowing.value;
+    const previousCount = localFollowersCount.value;
+
+    localIsFollowing.value = !previousFollowing;
+    localFollowersCount.value += localIsFollowing.value ? 1 : -1;
+    if (localFollowersCount.value < 0) localFollowersCount.value = 0;
+
+    isFollowing.value = true;
+    try {
+        const res = await axios.post(route('users.follow', props.post.user.username));
+        if (res.data?.is_following !== undefined) {
+            localIsFollowing.value = res.data.is_following;
+            localFollowersCount.value = res.data.followers_count;
+        }
+    } catch (e) {
+        localIsFollowing.value = previousFollowing;
+        localFollowersCount.value = previousCount;
+    } finally {
+        isFollowing.value = false;
+    }
 };
 
 const togglePublish = () => {
@@ -172,6 +259,7 @@ const deletePost = () => {
     }
 };
 
+// Comment submission
 const submitComment = () => {
     if (!requireAuth()) return;
     commentForm.post(route('comments.store', props.post.slug), {
@@ -179,19 +267,59 @@ const submitComment = () => {
         onSuccess: () => {
             commentForm.reset();
             replyToId.value = null;
+            replyingToAuthor.value = '';
         },
     });
 };
 
-const setReplyTo = (commentId) => {
+const setReplyTo = (commentId, authorName = '') => {
     if (!requireAuth()) return;
     replyToId.value = commentId;
+    replyingToAuthor.value = authorName;
     commentForm.parent_id = commentId;
 };
 
 const cancelReply = () => {
     replyToId.value = null;
+    replyingToAuthor.value = '';
     commentForm.parent_id = null;
+};
+
+// Inline comment editing
+const startEdit = (comment) => {
+    editingCommentId.value = comment.id;
+    editBody.value = comment.body;
+};
+
+const cancelEdit = () => {
+    editingCommentId.value = null;
+    editBody.value = '';
+};
+
+const saveEdit = async (comment) => {
+    if (!editBody.value.trim() || isSavingEdit.value) return;
+
+    isSavingEdit.value = true;
+    try {
+        await axios.put(route('comments.update', comment.id), {
+            body: editBody.value.trim(),
+        });
+        editingCommentId.value = null;
+        editBody.value = '';
+        router.reload({ only: ['post'] });
+    } catch (err) {
+        alert(err.response?.data?.message || 'Failed to update comment. The 15-minute edit window may have expired.');
+    } finally {
+        isSavingEdit.value = false;
+    }
+};
+
+// Delete comment
+const deleteComment = (comment) => {
+    if (!confirm('Are you sure you want to delete this comment?')) return;
+    router.delete(route('comments.destroy', comment.id), {
+        preserveScroll: true,
+    });
 };
 </script>
 
@@ -287,51 +415,66 @@ const cancelReply = () => {
                                     v-if="!currentUser || currentUser.id !== post.user.id"
                                     type="button"
                                     @click="toggleFollow"
+                                    :disabled="isFollowing"
                                     :class="[
-                                        authorStats.is_following
+                                        localIsFollowing
                                             ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200'
                                             : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-sm',
-                                        'ml-2 rounded-full px-3 py-1 text-xs font-semibold transition'
+                                        'ml-2 rounded-full px-3 py-1 text-xs font-semibold transition disabled:opacity-50'
                                     ]"
                                 >
-                                    {{ authorStats.is_following ? 'Following' : 'Follow' }}
+                                    {{ localIsFollowing ? 'Following' : 'Follow' }}
                                 </button>
                             </div>
 
-                            <!-- Interaction Actions (Like, Bookmark, Edit) -->
+                            <!-- Interaction Actions (Like, Bookmark, Edit, Report) -->
                             <div class="flex items-center gap-2">
                                 <!-- Like Button -->
                                 <button
                                     type="button"
                                     @click="toggleLike"
+                                    :disabled="isLiking"
                                     :class="[
-                                        isLiked
+                                        localIsLiked
                                             ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-900'
                                             : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
-                                        'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition'
+                                        'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition disabled:opacity-50'
                                     ]"
                                     title="Like this story"
                                 >
-                                    <svg class="h-4 w-4" :fill="isLiked ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg class="h-4 w-4" :fill="localIsLiked ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                                     </svg>
-                                    <span>{{ post.likes_count }}</span>
+                                    <span>{{ localLikesCount }}</span>
                                 </button>
 
                                 <!-- Bookmark Button -->
                                 <button
                                     type="button"
                                     @click="toggleBookmark"
+                                    :disabled="isBookmarking"
                                     :class="[
-                                        isBookmarked
+                                        localIsBookmarked
                                             ? 'bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-400 dark:border-indigo-900'
                                             : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
-                                        'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition'
+                                        'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition disabled:opacity-50'
                                     ]"
                                     title="Bookmark story"
                                 >
-                                    <svg class="h-4 w-4" :fill="isBookmarked ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg class="h-4 w-4" :fill="localIsBookmarked ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                                    </svg>
+                                </button>
+
+                                <!-- Report Story Button -->
+                                <button
+                                    type="button"
+                                    @click="openReportModal('post', post.id, post.title)"
+                                    class="inline-flex items-center rounded-lg border border-gray-200 bg-white p-1.5 text-xs text-gray-500 shadow-sm hover:bg-gray-50 hover:text-rose-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-rose-400 transition"
+                                    title="Report this story"
+                                >
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
                                     </svg>
                                 </button>
 
@@ -523,7 +666,7 @@ const cancelReply = () => {
                                                 </Link>
                                             </h3>
                                             <p class="text-xs text-gray-500 dark:text-gray-400">
-                                                @{{ post.user.username }} • {{ authorStats.followers_count }} followers
+                                                @{{ post.user.username }} • {{ localFollowersCount }} followers
                                             </p>
                                         </div>
 
@@ -531,14 +674,15 @@ const cancelReply = () => {
                                             v-if="!currentUser || currentUser.id !== post.user.id"
                                             type="button"
                                             @click="toggleFollow"
+                                            :disabled="isFollowing"
                                             :class="[
-                                                authorStats.is_following
+                                                localIsFollowing
                                                     ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200'
                                                     : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-sm',
-                                                'rounded-full px-4 py-1.5 text-xs font-semibold transition'
+                                                'rounded-full px-4 py-1.5 text-xs font-semibold transition disabled:opacity-50'
                                             ]"
                                         >
-                                            {{ authorStats.is_following ? 'Following' : 'Follow' }}
+                                            {{ localIsFollowing ? 'Following' : 'Follow' }}
                                         </button>
                                     </div>
 
@@ -620,24 +764,27 @@ const cancelReply = () => {
                                 <template v-if="currentUser">
                                     <form @submit.prevent="submitComment" class="space-y-3">
                                         <div v-if="replyToId" class="flex items-center justify-between rounded-lg bg-indigo-50 px-3 py-1.5 text-xs text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300">
-                                            <span>Replying to comment...</span>
+                                            <span>Replying to <strong v-if="replyingToAuthor">@{{ replyingToAuthor }}</strong><span v-else>comment</span>...</span>
                                             <button type="button" @click="cancelReply" class="font-bold hover:underline">Cancel</button>
                                         </div>
                                         <textarea
                                             v-model="commentForm.body"
                                             rows="3"
-                                            placeholder="What are your thoughts on this story?"
+                                            placeholder="What are your thoughts on this story? (Plain text with limited Markdown supported)"
                                             class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 text-sm"
                                             required
                                         ></textarea>
-                                        <div class="flex justify-end">
-                                            <button
-                                                type="submit"
-                                                :disabled="commentForm.processing"
-                                                class="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 dark:bg-indigo-500 disabled:opacity-50"
-                                            >
-                                                {{ commentForm.processing ? 'Publishing...' : 'Publish Comment' }}
-                                            </button>
+                                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-gray-400">
+                                            <span>Supports limited markdown: <code>**bold**</code>, <code>*italic*</code>, <code>`code`</code>, <code>> quote</code>, <code>[link](url)</code></span>
+                                            <div class="flex justify-end">
+                                                <button
+                                                    type="submit"
+                                                    :disabled="commentForm.processing"
+                                                    class="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 dark:bg-indigo-500 disabled:opacity-50 transition"
+                                                >
+                                                    {{ commentForm.processing ? 'Publishing...' : (replyToId ? 'Post Reply' : 'Publish Comment') }}
+                                                </button>
+                                            </div>
                                         </div>
                                     </form>
                                 </template>
@@ -661,45 +808,204 @@ const cancelReply = () => {
                                     :key="comment.id"
                                     class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900/60"
                                 >
+                                    <!-- Comment Author & Info -->
                                     <div class="flex items-center justify-between">
                                         <div class="flex items-center gap-3">
-                                            <img
-                                                :src="comment.user.avatar_url"
-                                                :alt="comment.user.name"
-                                                class="h-8 w-8 rounded-full object-cover"
-                                            />
-                                            <div>
-                                                <Link :href="route('author.show', comment.user.username)" class="text-xs font-bold text-gray-900 hover:text-indigo-600 dark:text-white">
-                                                    {{ comment.user.name }}
-                                                </Link>
-                                                <p class="text-[10px] text-gray-400">
-                                                    {{ new Date(comment.created_at).toLocaleDateString() }}
-                                                </p>
-                                            </div>
+                                            <template v-if="!comment.trashed && comment.user">
+                                                <img
+                                                    :src="comment.user.avatar_url"
+                                                    :alt="comment.user.name"
+                                                    class="h-8 w-8 rounded-full object-cover"
+                                                />
+                                                <div>
+                                                    <Link :href="route('author.show', comment.user.username)" class="text-xs font-bold text-gray-900 hover:text-indigo-600 dark:text-white">
+                                                        {{ comment.user.name }}
+                                                    </Link>
+                                                    <p class="text-[10px] text-gray-400">
+                                                        {{ new Date(comment.created_at).toLocaleDateString() }}
+                                                    </p>
+                                                </div>
+                                            </template>
+                                            <template v-else>
+                                                <div class="h-8 w-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs text-gray-500">
+                                                    ?
+                                                </div>
+                                                <span class="text-xs text-gray-400 italic">Deleted user or content</span>
+                                            </template>
                                         </div>
 
+                                        <!-- Top Action Buttons (Reply / Report) -->
+                                        <div v-if="!comment.trashed && currentUser" class="flex items-center gap-3 text-xs">
+                                            <button
+                                                type="button"
+                                                @click="setReplyTo(comment.id, comment.user?.name)"
+                                                class="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                                            >
+                                                Reply
+                                            </button>
+                                            <button
+                                                type="button"
+                                                @click="openReportModal('comment', comment.id, 'Comment by ' + (comment.user?.name || 'User'))"
+                                                class="text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
+                                                title="Report comment"
+                                            >
+                                                Report
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Inline Edit Form or Rendered Body -->
+                                    <div v-if="editingCommentId === comment.id" class="mt-3 space-y-2">
+                                        <textarea
+                                            v-model="editBody"
+                                            rows="3"
+                                            class="w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                                        ></textarea>
+                                        <div class="flex items-center justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                @click="cancelEdit"
+                                                class="rounded-lg px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                @click="saveEdit(comment)"
+                                                :disabled="isSavingEdit"
+                                                class="rounded-lg bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                                            >
+                                                {{ isSavingEdit ? 'Saving...' : 'Save' }}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        v-else
+                                        class="mt-3 text-sm text-gray-700 dark:text-gray-300 leading-relaxed break-words"
+                                        v-html="comment.formatted_body"
+                                    ></div>
+
+                                    <!-- Bottom Actions for Comment Owner / Moderator -->
+                                    <div
+                                        v-if="!comment.trashed && currentUser && (comment.can_edit || currentUser.id === post.user_id || currentUser.role === 'admin' || currentUser.role === 'moderator')"
+                                        class="mt-3 flex items-center gap-3 text-xs border-t border-gray-50 pt-2 dark:border-gray-800/60"
+                                    >
                                         <button
-                                            v-if="currentUser"
+                                            v-if="comment.can_edit"
                                             type="button"
-                                            @click="setReplyTo(comment.id)"
-                                            class="text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                                            @click="startEdit(comment)"
+                                            class="text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 font-medium"
                                         >
-                                            Reply
+                                            Edit (15m window)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            @click="deleteComment(comment)"
+                                            class="text-rose-500 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 font-medium"
+                                        >
+                                            Delete
                                         </button>
                                     </div>
 
-                                    <p class="mt-3 text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
-                                        {{ comment.body }}
-                                    </p>
-
-                                    <!-- Nested Replies -->
+                                    <!-- Nested Threaded Replies (Max 2 Levels Deep) -->
                                     <div v-if="comment.replies && comment.replies.length > 0" class="mt-4 space-y-3 pl-6 border-l-2 border-indigo-100 dark:border-indigo-900">
-                                        <div v-for="reply in comment.replies" :key="reply.id" class="text-xs">
-                                            <div class="flex items-center gap-2">
-                                                <span class="font-bold text-gray-900 dark:text-white">{{ reply.user.name }}</span>
-                                                <span class="text-gray-400">• {{ new Date(reply.created_at).toLocaleDateString() }}</span>
+                                        <div
+                                            v-for="reply in comment.replies"
+                                            :key="reply.id"
+                                            class="text-xs rounded-lg bg-gray-50/70 p-3 dark:bg-gray-800/40"
+                                        >
+                                            <div class="flex items-center justify-between">
+                                                <div class="flex items-center gap-2">
+                                                    <template v-if="!reply.trashed && reply.user">
+                                                        <img
+                                                            :src="reply.user.avatar_url"
+                                                            :alt="reply.user.name"
+                                                            class="h-6 w-6 rounded-full object-cover"
+                                                        />
+                                                        <Link :href="route('author.show', reply.user.username)" class="font-bold text-gray-900 hover:text-indigo-600 dark:text-white">
+                                                            {{ reply.user.name }}
+                                                        </Link>
+                                                        <span class="text-gray-400">• {{ new Date(reply.created_at).toLocaleDateString() }}</span>
+                                                    </template>
+                                                    <template v-else>
+                                                        <span class="text-gray-400 italic">Deleted user or content</span>
+                                                    </template>
+                                                </div>
+
+                                                <!-- Reply / Report button for nested reply -->
+                                                <div v-if="!reply.trashed && currentUser" class="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        @click="setReplyTo(reply.id, reply.user?.name)"
+                                                        class="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                                                    >
+                                                        Reply
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        @click="openReportModal('comment', reply.id, 'Reply by ' + (reply.user?.name || 'User'))"
+                                                        class="text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
+                                                        title="Report reply"
+                                                    >
+                                                        Report
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <p class="mt-1 text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-line">{{ reply.body }}</p>
+
+                                            <!-- Reply Edit Form or Rendered Body -->
+                                            <div v-if="editingCommentId === reply.id" class="mt-2 space-y-2">
+                                                <textarea
+                                                    v-model="editBody"
+                                                    rows="2"
+                                                    class="w-full rounded-lg border-gray-300 text-xs shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                                                ></textarea>
+                                                <div class="flex items-center justify-end gap-2">
+                                                    <button
+                                                        type="button"
+                                                        @click="cancelEdit"
+                                                        class="rounded px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-200 dark:text-gray-300"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        @click="saveEdit(reply)"
+                                                        :disabled="isSavingEdit"
+                                                        class="rounded bg-indigo-600 px-2 py-0.5 text-xs text-white hover:bg-indigo-500 disabled:opacity-50"
+                                                    >
+                                                        Save
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div
+                                                v-else
+                                                class="mt-2 text-gray-600 dark:text-gray-300 leading-relaxed break-words"
+                                                v-html="reply.formatted_body"
+                                            ></div>
+
+                                            <!-- Reply Edit/Delete actions -->
+                                            <div
+                                                v-if="!reply.trashed && currentUser && (reply.can_edit || currentUser.id === post.user_id || currentUser.role === 'admin' || currentUser.role === 'moderator')"
+                                                class="mt-2 flex items-center gap-3 text-[11px] pt-1"
+                                            >
+                                                <button
+                                                    v-if="reply.can_edit"
+                                                    type="button"
+                                                    @click="startEdit(reply)"
+                                                    class="text-gray-500 hover:text-indigo-600 dark:text-gray-400 font-medium"
+                                                >
+                                                    Edit (15m window)
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    @click="deleteComment(reply)"
+                                                    class="text-rose-500 hover:text-rose-700 dark:text-rose-400 font-medium"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -772,5 +1078,15 @@ const cancelReply = () => {
                 </aside>
             </div>
         </div>
+
+        <!-- Report Modal for Post & Comments -->
+        <ReportModal
+            :show="reportModalOpen"
+            :reportable-type="reportType"
+            :reportable-id="reportId"
+            :item-title="reportTitle"
+            @close="reportModalOpen = false"
+            @reported="reportModalOpen = false"
+        />
     </AppLayout>
 </template>
