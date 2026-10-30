@@ -31,6 +31,8 @@ class LikeController extends Controller
             $post->increment('likes_count');
         }
 
+        app(\App\Services\FeedService::class)->invalidateUserFeedCache($user);
+
         return back();
     }
 }

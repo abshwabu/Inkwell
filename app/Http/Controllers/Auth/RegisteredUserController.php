@@ -59,6 +59,20 @@ class RegisteredUserController extends Controller
 
         $user = User::create($userData);
 
+        // Merge lightweight guest preferences from cookie into newly created account
+        $guestPrefsCookie = $request->cookie('inkwell_guest_prefs');
+        if ($guestPrefsCookie) {
+            $guestPrefs = json_decode($guestPrefsCookie, true);
+            if (is_array($guestPrefs)) {
+                if (! empty($guestPrefs['categories'])) {
+                    $user->preferredCategories()->syncWithoutDetaching($guestPrefs['categories']);
+                }
+                if (! empty($guestPrefs['tags'])) {
+                    $user->preferredTags()->syncWithoutDetaching($guestPrefs['tags']);
+                }
+            }
+        }
+
         if (config('auth.verify_email', false)) {
             event(new Registered($user));
         } else {
@@ -67,6 +81,6 @@ class RegisteredUserController extends Controller
 
         Auth::login($user);
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        return redirect()->intended(route('dashboard', absolute: false))->withoutCookie('inkwell_guest_prefs');
     }
 }

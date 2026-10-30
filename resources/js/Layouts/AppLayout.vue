@@ -180,6 +180,9 @@ const handleCategorySelect = (category) => {
                                 <DropdownLink :href="route('author.show', page.props.auth.user.username)">
                                     Public Profile
                                 </DropdownLink>
+                                <DropdownLink :href="route('settings.preferences')">
+                                    Reading Preferences
+                                </DropdownLink>
                                 <DropdownLink :href="route('profile.edit')">
                                     Settings
                                 </DropdownLink>

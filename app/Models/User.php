@@ -180,4 +180,12 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->hasMany(PostView::class);
     }
+
+    /**
+     * Dismissed posts by the user ("Not interested").
+     */
+    public function dismissedPosts(): HasMany
+    {
+        return $this->hasMany(PostDismissal::class);
+    }
 }

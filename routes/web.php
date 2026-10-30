@@ -6,10 +6,12 @@ use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FeedController;
 use App\Http\Controllers\FollowController;
 use App\Http\Controllers\ImageUploadController;
 use App\Http\Controllers\LikeController;
 use App\Http\Controllers\PostController;
+use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\TagController;
@@ -21,31 +23,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-// Public routes (No auth required)
-Route::get('/', function (Request $request) {
-    $search = $request->input('search');
-    $categorySlug = $request->input('category');
-
-    $posts = Post::published()
-        ->when($search, fn ($q) => $q->where('title', 'like', "%{$search}%"))
-        ->when($categorySlug, fn ($q) => $q->whereHas('category', fn ($cq) => $cq->where('slug', $categorySlug)))
-        ->popular()
-        ->withRelations()
-        ->latest('published_at')
-        ->paginate(9)
-        ->withQueryString();
-
-    return Inertia::render('Welcome', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'posts' => $posts,
-        'categories' => Category::orderBy('name')->get(['id', 'name', 'slug']),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
-})->name('home');
-
+// Public Front Page Feed & Search
+Route::get('/', [FeedController::class, 'index'])->name('home');
 Route::get('/search', [SearchController::class, 'index'])->name('search');
+
+// "Not interested" dismissal & undismissal (works for guests with cookie, and logged-in users)
+Route::post('/posts/{post}/dismiss', [FeedController::class, 'dismiss'])->name('posts.dismiss');
+Route::post('/posts/{post}/undismiss', [FeedController::class, 'undoDismiss'])->name('posts.undismiss');
 
 // Category routes (/category/{slug} and alias /categories/{slug})
 Route::get('/category/{category:slug}', [CategoryController::class, 'show'])->name('categories.show');
@@ -72,7 +56,7 @@ Route::get('/@{username}', [AuthorController::class, 'show'])
     ->where('username', '[a-zA-Z0-9_\-]+')
     ->name('author.show');
 
-// Authenticated & Not Banned Routes (Writing, Commenting, Liking, Bookmarking, Following)
+// Authenticated & Not Banned Routes (Writing, Commenting, Liking, Bookmarking, Following, Admin Feature)
 Route::middleware(['auth', 'not.banned'])->group(function () {
     Route::get('/write', [PostController::class, 'create'])->name('posts.create');
     Route::post('/posts', [PostController::class, 'store'])->name('posts.store');
@@ -87,6 +71,7 @@ Route::middleware(['auth', 'not.banned'])->group(function () {
     Route::post('/posts/{post}/unpublish', [PostController::class, 'unpublish'])->name('posts.unpublish');
     Route::post('/posts/{post}/archive', [PostController::class, 'archive'])->name('posts.archive');
     Route::post('/posts/{post}/schedule', [PostController::class, 'schedule'])->name('posts.schedule');
+    Route::post('/posts/{post}/toggle-featured', [FeedController::class, 'toggleFeatured'])->name('posts.toggle-featured');
 
     Route::post('/posts/{post:slug}/comments', [CommentController::class, 'store'])->name('comments.store');
     Route::put('/comments/{comment}', [CommentController::class, 'update'])->name('comments.update');
@@ -97,8 +82,14 @@ Route::middleware(['auth', 'not.banned'])->group(function () {
     Route::post('/users/{user:username}/follow', [FollowController::class, 'toggle'])->name('users.follow');
 });
 
-// Authenticated Settings & Dashboard
+// Authenticated Settings, Dashboard & Onboarding
 Route::middleware('auth')->group(function () {
+    Route::get('/onboarding', [PreferenceController::class, 'onboarding'])->name('onboarding');
+    Route::post('/onboarding', [PreferenceController::class, 'storeOnboarding'])->name('onboarding.store');
+
+    Route::get('/settings/preferences', [PreferenceController::class, 'edit'])->name('settings.preferences');
+    Route::put('/settings/preferences', [PreferenceController::class, 'update'])->name('settings.preferences.update');
+
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::post('/dashboard/bulk-action', [DashboardController::class, 'bulkAction'])->name('dashboard.bulk-action');
 

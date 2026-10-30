@@ -22,6 +22,8 @@ class FollowController extends Controller
 
         $follower->following()->toggle($user->id);
 
+        app(\App\Services\FeedService::class)->invalidateUserFeedCache($follower);
+
         return back();
     }
 }

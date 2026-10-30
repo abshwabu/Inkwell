@@ -32,6 +32,7 @@ class Post extends Model
         'content_html',
         'reading_time_minutes',
         'status',
+        'is_featured',
         'published_at',
         'views_count',
         'likes_count',
@@ -51,6 +52,7 @@ class Post extends Model
             'content_json' => 'array',
             'reading_time_minutes' => 'integer',
             'status' => PostStatus::class,
+            'is_featured' => 'boolean',
             'published_at' => 'datetime',
             'views_count' => 'integer',
             'likes_count' => 'integer',
@@ -171,6 +173,22 @@ class Post extends Model
     public function views(): HasMany
     {
         return $this->hasMany(PostView::class);
+    }
+
+    /**
+     * Dismissals logged for the post.
+     */
+    public function dismissals(): HasMany
+    {
+        return $this->hasMany(PostDismissal::class);
+    }
+
+    /**
+     * Scope to filter featured / editor's pick posts.
+     */
+    public function scopeFeatured(Builder $query): void
+    {
+        $query->where('is_featured', true);
     }
 
     /**
