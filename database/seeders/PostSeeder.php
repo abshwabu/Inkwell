@@ -193,50 +193,8 @@ class PostSeeder extends Seeder
                 $likesCount = rand(2, 60);
             }
 
-            $htmlContent = "<h2>Understanding the Core Fundamentals</h2>"
-                . "<p>{$excerpt}</p>"
-                . "<p>Writing on the open web should feel timeless. Inkwell was created to ensure that essays remain accessible, beautifully presented, and resilient across decades of shifting web paradigms.</p>"
-                . "<blockquote><p>Simplicity is prerequisite for reliability. When architecture honors clean primitives, velocity follows naturally.</p></blockquote>"
-                . "<h2>Practical Observations and Technical Takeaways</h2>"
-                . "<p>By structuring schemas with care, enforcing foreign keys, and choosing persistent single-file database architectures, software retains its agility without unneeded infrastructure bloat.</p>"
-                . "<ul><li>Always favor straightforward patterns over speculative complexity.</li><li>Design schemas for expressive querying and zero N+1 cascades.</li><li>Treat reading typography as an essential design discipline.</li></ul>";
-
-            $tiptapDoc = [
-                'type' => 'doc',
-                'content' => [
-                    [
-                        'type' => 'heading',
-                        'attrs' => ['level' => 2],
-                        'content' => [['type' => 'text', 'text' => 'Understanding the Core Fundamentals']],
-                    ],
-                    [
-                        'type' => 'paragraph',
-                        'content' => [['type' => 'text', 'text' => $excerpt]],
-                    ],
-                    [
-                        'type' => 'paragraph',
-                        'content' => [['type' => 'text', 'text' => 'Writing on the open web should feel timeless. Inkwell was created to ensure that essays remain accessible, beautifully presented, and resilient across decades of shifting web paradigms.']],
-                    ],
-                    [
-                        'type' => 'blockquote',
-                        'content' => [
-                            [
-                                'type' => 'paragraph',
-                                'content' => [['type' => 'text', 'text' => 'Simplicity is prerequisite for reliability. When architecture honors clean primitives, velocity follows naturally.']],
-                            ],
-                        ],
-                    ],
-                    [
-                        'type' => 'heading',
-                        'attrs' => ['level' => 2],
-                        'content' => [['type' => 'text', 'text' => 'Practical Observations and Technical Takeaways']],
-                    ],
-                    [
-                        'type' => 'paragraph',
-                        'content' => [['type' => 'text', 'text' => 'By structuring schemas with care, enforcing foreign keys, and choosing persistent single-file database architectures, software retains its agility without unneeded infrastructure bloat.']],
-                    ],
-                ],
-            ];
+            $htmlContent = ContentHelper::generateArticleHtml($title, $category->slug, $excerpt);
+            $tiptapDoc = ContentHelper::generateArticleJson($htmlContent);
 
             $post = Post::create([
                 'user_id' => $user->id,
@@ -247,7 +205,7 @@ class PostSeeder extends Seeder
                 'cover_image_path' => $template['image'],
                 'content_json' => $tiptapDoc,
                 'content_html' => $htmlContent,
-                'reading_time_minutes' => max(2, (int) ceil(str_word_count(strip_tags($htmlContent)) / 200)),
+                'reading_time_minutes' => max(1, (int) ceil(str_word_count(strip_tags($htmlContent)) / 225)),
                 'status' => $status,
                 'published_at' => $publishedAt,
                 'views_count' => $viewsCount,

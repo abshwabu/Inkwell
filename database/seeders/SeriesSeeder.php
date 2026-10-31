@@ -34,7 +34,8 @@ class SeriesSeeder extends Seeder
                     'Why SQLite with WAL Mode is the Secret Weapon for Modern Apps',
                     'FTS5 Search Synchronization and BM25 Ranking in Practice',
                     'Zero-Downtime SQLite Backups and Vacuum Strategies',
-                    'When to Stay with SQLite and When to Scale to PostgreSQL',
+                    'Concurrency Controls, Pragma Tuning, and Memory Boundaries',
+                    'When to Stay with SQLite and When to Scale to Distributed Engines',
                 ],
             ],
             [
@@ -60,6 +61,7 @@ class SeriesSeeder extends Seeder
                     'Building Audience Before Product: The Inverted Startup Playbook',
                     'The Death of the Vanity Metric: Prioritizing Retention Over Signups',
                     'Pricing Power and Value Metrics: How to Avoid Commoditization',
+                    'Negative Churn, Expansion Revenue, and Sustainable Cash Reserves',
                 ],
             ],
             [
@@ -71,6 +73,8 @@ class SeriesSeeder extends Seeder
                     'Digital Minimalism: Curating an Intentional Information Diet',
                     'The Art of the Daily Walk: Why Movement Unlocks Creative Clarity',
                     'Circadian Optimization: The Science of Morning Light and Deep Sleep',
+                    'Monastic Work Blocks: Protecting Flow State in an Era of Interruptions',
+                    'The Analog Sanctuary: Designing Physical Spaces for Quiet Reflection',
                 ],
             ],
             [
@@ -82,6 +86,8 @@ class SeriesSeeder extends Seeder
                     'In Search of Silence: Weeks in the High Pyrenees',
                     'Slow Travel Across Japan: Kyoto to Hokkaido on Local Trains',
                     'Mountain Architecture and Alpine Refuges: Lessons in Radical Economy',
+                    'Crossing the Eurasian Steppes: The Solitude of Endless Horizons',
+                    'The Ancient Caravanserais: Footsteps Along Forgotten Silk Road Corridors',
                 ],
             ],
         ];
@@ -106,24 +112,28 @@ class SeriesSeeder extends Seeder
                 // Check if post already exists by title
                 $post = Post::where('title', $partTitle)->first();
 
+                $excerpt = 'Part ' . ($orderIndex + 1) . ' of the series "' . $series->title . '". Exploring core principles, concrete trade-offs, and actionable architecture.';
+                $category = $categories->isNotEmpty() ? $categories->random() : null;
+                $htmlContent = ContentHelper::generateArticleHtml(
+                    title: $partTitle,
+                    category: $category?->slug ?? 'technology',
+                    excerpt: $excerpt,
+                    seriesTitle: $series->title,
+                    partNumber: $orderIndex + 1
+                );
+                $tiptapDoc = ContentHelper::generateArticleJson($htmlContent);
+
                 if (! $post) {
                     $post = Post::create([
                         'user_id' => $author->id,
-                        'category_id' => $categories->isNotEmpty() ? $categories->random()->id : null,
+                        'category_id' => $category?->id,
                         'title' => $partTitle,
                         'slug' => Str::slug($partTitle),
-                        'excerpt' => 'Part ' . ($orderIndex + 1) . ' of the series "' . $series->title . '". Exploring core principles and practical takeaways.',
-                        'content_html' => '<h2>Introduction</h2><p>Welcome to Part ' . ($orderIndex + 1) . ' of <strong>' . htmlspecialchars($series->title) . '</strong>.</p><p>In this installment, we explore foundational insights, concrete design choices, and actionable advice to apply to your own projects.</p><blockquote><p>Consistency and narrative structure are the hallmarks of great multi-part publications.</p></blockquote>',
-                        'content_json' => [
-                            'type' => 'doc',
-                            'content' => [
-                                [
-                                    'type' => 'paragraph',
-                                    'content' => [['type' => 'text', 'text' => 'Part ' . ($orderIndex + 1) . ' of ' . $series->title]],
-                                ],
-                            ],
-                        ],
-                        'reading_time_minutes' => rand(3, 8),
+                        'excerpt' => $excerpt,
+                        'cover_image_path' => $tmpl['cover'],
+                        'content_html' => $htmlContent,
+                        'content_json' => $tiptapDoc,
+                        'reading_time_minutes' => max(1, (int) ceil(str_word_count(strip_tags($htmlContent)) / 225)),
                         'status' => PostStatus::PUBLISHED,
                         'published_at' => now()->subDays(10 - $orderIndex),
                         'series_id' => $series->id,
@@ -134,6 +144,9 @@ class SeriesSeeder extends Seeder
                         'user_id' => $author->id, // Ensure ownership matches series owner
                         'series_id' => $series->id,
                         'series_order' => $orderIndex + 1,
+                        'content_html' => $htmlContent,
+                        'content_json' => $tiptapDoc,
+                        'reading_time_minutes' => max(1, (int) ceil(str_word_count(strip_tags($htmlContent)) / 225)),
                     ]);
                 }
 
