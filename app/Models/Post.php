@@ -129,15 +129,25 @@ class Post extends Model
             return null;
         }
 
-        $decoded = is_string($value) ? json_decode($value, true) : $value;
+        $decoded = $value;
+        // Unpack if string (handle single or double encoded JSON)
+        while (is_string($decoded)) {
+            $unpacked = json_decode($decoded, true);
+            if ($unpacked === null && json_last_error() !== JSON_ERROR_NONE) {
+                break;
+            }
+            $decoded = $unpacked;
+        }
+
         if (! is_array($decoded)) {
-            return $decoded;
+            return null;
         }
 
         $jsonStr = json_encode($decoded);
         if (preg_match('#https?://(?:localhost|127\.0\.0\.1)(?::\d+)?/storage/#i', $jsonStr)) {
             $jsonStr = preg_replace('#https?://(?:localhost|127\.0\.0\.1)(?::\d+)?/storage/#i', '/storage/', $jsonStr);
-            return json_decode($jsonStr, true);
+            $cleanDecoded = json_decode($jsonStr, true);
+            return is_array($cleanDecoded) ? $cleanDecoded : $decoded;
         }
 
         return $decoded;
