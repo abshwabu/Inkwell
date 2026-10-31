@@ -23,6 +23,8 @@ class Post extends Model
     protected $fillable = [
         'user_id',
         'category_id',
+        'series_id',
+        'series_order',
         'title',
         'slug',
         'excerpt',
@@ -58,6 +60,8 @@ class Post extends Model
             'views_count' => 'integer',
             'likes_count' => 'integer',
             'comments_count' => 'integer',
+            'series_id' => 'integer',
+            'series_order' => 'integer',
         ];
     }
 
@@ -213,6 +217,46 @@ class Post extends Model
     }
 
     /**
+     * Series the post belongs to.
+     */
+    public function series(): BelongsTo
+    {
+        return $this->belongsTo(Series::class);
+    }
+
+    /**
+     * Get the next published post in the same series.
+     */
+    public function nextInSeries(): ?Post
+    {
+        if (! $this->series_id || ! $this->series_order) {
+            return null;
+        }
+
+        return static::published()
+            ->where('series_id', $this->series_id)
+            ->where('series_order', '>', $this->series_order)
+            ->orderBy('series_order', 'asc')
+            ->first();
+    }
+
+    /**
+     * Get the previous published post in the same series.
+     */
+    public function previousInSeries(): ?Post
+    {
+        if (! $this->series_id || ! $this->series_order) {
+            return null;
+        }
+
+        return static::published()
+            ->where('series_id', $this->series_id)
+            ->where('series_order', '<', $this->series_order)
+            ->orderBy('series_order', 'desc')
+            ->first();
+    }
+
+    /**
      * Category the post belongs to.
      */
     public function category(): BelongsTo
@@ -316,6 +360,6 @@ class Post extends Model
      */
     public function scopeWithRelations(Builder $query): void
     {
-        $query->with(['user', 'category', 'tags']);
+        $query->with(['user', 'category', 'tags', 'series']);
     }
 }

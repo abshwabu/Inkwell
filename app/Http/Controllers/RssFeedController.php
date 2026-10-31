@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\Post;
+use App\Models\Series;
 use App\Models\User;
 use App\Services\SettingService;
 use Illuminate\Http\Response;
@@ -94,6 +95,36 @@ class RssFeedController extends Controller
             description: $description,
             link: route('author.show', ['username' => $author->username]),
             feedUrl: route('feed.author', ['username' => $author->username]),
+            posts: $posts
+        );
+
+        return response($xml, 200, [
+            'Content-Type' => 'application/rss+xml; charset=utf-8',
+            'Cache-Control' => 'public, max-age=1800',
+        ]);
+    }
+
+    /**
+     * Series-specific RSS feed.
+     */
+    public function series(string $slug): Response
+    {
+        $series = Series::where('slug', $slug)->firstOrFail();
+        $siteName = $this->settingService->get('site_name', config('app.name', 'Inkwell'));
+        $title = "{$siteName} — {$series->title}";
+        $description = $series->description ?: "Parts published in the series {$series->title} on {$siteName}.";
+
+        $posts = $series->posts()
+            ->published()
+            ->withRelations()
+            ->orderBy('series_order', 'asc')
+            ->get();
+
+        $xml = $this->buildRssFeed(
+            title: $title,
+            description: $description,
+            link: url("/series/{$series->slug}"),
+            feedUrl: url("/series/{$series->slug}/feed"),
             posts: $posts
         );
 

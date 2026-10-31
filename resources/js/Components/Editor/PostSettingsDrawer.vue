@@ -19,6 +19,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    userSeries: {
+        type: Array,
+        default: () => [],
+    },
     isEdit: {
         type: Boolean,
         default: false,
@@ -34,6 +38,82 @@ const coverUploadError = ref('');
 // Tag input state
 const tagInput = ref('');
 const isTagDropdownOpen = ref(false);
+
+// Series management state
+const userSeriesList = ref([...props.userSeries]);
+const isSeriesEnabled = ref(Boolean(props.form.series_id));
+const isCustomOrderOpen = ref(false);
+const showCreateSeriesModal = ref(false);
+const isCreatingSeries = ref(false);
+const createSeriesError = ref('');
+
+const newSeriesForm = ref({
+    title: '',
+    description: '',
+    cover_image_path: '',
+    status: 'ongoing',
+});
+
+const toggleSeries = () => {
+    if (isSeriesEnabled.value) {
+        if (!props.form.series_id && userSeriesList.value.length > 0) {
+            selectSeries(userSeriesList.value[0].id);
+        } else if (userSeriesList.value.length === 0) {
+            showCreateSeriesModal.value = true;
+        }
+    } else {
+        props.form.series_id = null;
+        props.form.series_order = null;
+        emit('markDirty');
+    }
+};
+
+const selectSeries = (seriesId) => {
+    props.form.series_id = seriesId ? Number(seriesId) : null;
+    if (props.form.series_id) {
+        const found = userSeriesList.value.find((s) => s.id === props.form.series_id);
+        if (found && !props.form.series_order) {
+            props.form.series_order = (found.posts_count || 0) + 1;
+        }
+    } else {
+        props.form.series_order = null;
+    }
+    emit('markDirty');
+};
+
+const selectedSeriesObject = computed(() => {
+    if (!props.form.series_id) return null;
+    return userSeriesList.value.find((s) => s.id === Number(props.form.series_id)) || null;
+});
+
+const submitCreateSeries = async () => {
+    if (!newSeriesForm.value.title.trim()) {
+        createSeriesError.value = 'Title is required for the series.';
+        return;
+    }
+
+    isCreatingSeries.value = true;
+    createSeriesError.value = '';
+
+    try {
+        const response = await axios.post(route('series.store'), newSeriesForm.value, {
+            headers: { Accept: 'application/json' },
+        });
+
+        const createdSeries = response.data.series;
+        userSeriesList.value.unshift(createdSeries);
+        props.form.series_id = createdSeries.id;
+        props.form.series_order = 1;
+        isSeriesEnabled.value = true;
+        showCreateSeriesModal.value = false;
+        newSeriesForm.value = { title: '', description: '', cover_image_path: '', status: 'ongoing' };
+        emit('markDirty');
+    } catch (err) {
+        createSeriesError.value = err.response?.data?.message || 'Failed to create series.';
+    } finally {
+        isCreatingSeries.value = false;
+    }
+};
 
 const filteredTags = computed(() => {
     const q = tagInput.value.toLowerCase().trim();
@@ -286,6 +366,122 @@ const previewDescription = computed(() => {
                             {{ cat.name }}
                         </option>
                     </select>
+                </div>
+
+                <!-- Story Series Section -->
+                <div class="border-t border-gray-100 dark:border-gray-800 pt-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Story Series</span>
+                            <p class="text-[11px] text-gray-400">Group this story as part of a multi-part saga</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                v-model="isSeriesEnabled"
+                                @change="toggleSeries"
+                                class="sr-only peer"
+                            />
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                    </div>
+
+                    <!-- Series Selection & Position Controls -->
+                    <div v-if="isSeriesEnabled" class="mt-3 space-y-3 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <label class="text-[11px] font-semibold text-gray-700 dark:text-gray-300">Select Series</label>
+                                <button
+                                    type="button"
+                                    @click="showCreateSeriesModal = true"
+                                    class="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                                >
+                                    + New Series
+                                </button>
+                            </div>
+
+                            <select
+                                :value="form.series_id"
+                                @change="selectSeries($event.target.value)"
+                                class="mt-1 w-full text-xs rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500"
+                            >
+                                <option value="">-- Choose a Series --</option>
+                                <option v-for="s in userSeriesList" :key="s.id" :value="s.id">
+                                    {{ s.title }} ({{ s.posts_count || 0 }} {{ (s.posts_count || 0) === 1 ? 'part' : 'parts' }})
+                                </option>
+                            </select>
+                        </div>
+
+                        <!-- Part Number & Move Option -->
+                        <div v-if="form.series_id" class="pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-xs">
+                            <span class="text-gray-600 dark:text-gray-300 font-medium">
+                                Position: <span class="text-indigo-600 dark:text-indigo-400 font-bold">Part {{ form.series_order || 1 }}</span>
+                            </span>
+
+                            <button
+                                type="button"
+                                @click="isCustomOrderOpen = !isCustomOrderOpen"
+                                class="text-xs text-gray-500 dark:text-gray-400 hover:text-indigo-600 font-semibold underline"
+                            >
+                                {{ isCustomOrderOpen ? 'Done' : 'Move' }}
+                            </button>
+                        </div>
+
+                        <div v-if="isCustomOrderOpen && form.series_id" class="mt-2">
+                            <label class="block text-[11px] text-gray-500 dark:text-gray-400">Choose Part Number</label>
+                            <input
+                                type="number"
+                                min="1"
+                                v-model.number="form.series_order"
+                                @input="emit('markDirty')"
+                                class="mt-1 w-full text-xs rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                            />
+                        </div>
+
+                        <!-- Inline Create New Series Form Modal/Block -->
+                        <div v-if="showCreateSeriesModal" class="mt-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-indigo-200 dark:border-indigo-900 shadow-sm space-y-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-bold text-gray-900 dark:text-white">Create New Series</span>
+                                <button type="button" @click="showCreateSeriesModal = false" class="text-gray-400 hover:text-gray-600">&times;</button>
+                            </div>
+
+                            <input
+                                type="text"
+                                v-model="newSeriesForm.title"
+                                placeholder="Series title (e.g. Masterclass in Vue 3)..."
+                                class="w-full text-xs rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                            />
+
+                            <textarea
+                                v-model="newSeriesForm.description"
+                                rows="2"
+                                placeholder="Description (optional)..."
+                                class="w-full text-xs rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                            ></textarea>
+
+                            <div class="flex gap-2">
+                                <select
+                                    v-model="newSeriesForm.status"
+                                    class="w-1/2 text-xs rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                                >
+                                    <option value="ongoing">Ongoing</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="hiatus">Hiatus</option>
+                                </select>
+
+                                <button
+                                    type="button"
+                                    @click="submitCreateSeries"
+                                    :disabled="isCreatingSeries"
+                                    class="w-1/2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold py-1.5 transition disabled:opacity-50"
+                                >
+                                    {{ isCreatingSeries ? 'Creating...' : 'Create & Select' }}
+                                </button>
+                            </div>
+
+                            <p v-if="createSeriesError" class="text-red-500 text-[11px]">{{ createSeriesError }}</p>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Tags Input with Autocomplete & Create-New (Up to 5) -->

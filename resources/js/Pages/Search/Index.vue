@@ -16,6 +16,10 @@ const props = defineProps({
         type: String,
         default: '',
     },
+    series: {
+        type: String,
+        default: '',
+    },
     date_from: {
         type: String,
         default: '',
@@ -36,11 +40,16 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    seriesList: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const searchTerm = ref(props.query);
 const selectedCategory = ref(props.category || '');
 const selectedTag = ref(props.tag || '');
+const selectedSeries = ref(props.series || '');
 const selectedDateFrom = ref(props.date_from || '');
 const selectedDateTo = ref(props.date_to || '');
 
@@ -49,6 +58,7 @@ const handleSearch = () => {
         q: searchTerm.value,
         category: selectedCategory.value || undefined,
         tag: selectedTag.value || undefined,
+        series: selectedSeries.value || undefined,
         from: selectedDateFrom.value || undefined,
         to: selectedDateTo.value || undefined,
     }, {
@@ -61,6 +71,7 @@ const clearFilters = () => {
     searchTerm.value = '';
     selectedCategory.value = '';
     selectedTag.value = '';
+    selectedSeries.value = '';
     selectedDateFrom.value = '';
     selectedDateTo.value = '';
     router.get(route('search'));
@@ -130,6 +141,22 @@ const clearFilters = () => {
                         </select>
                     </div>
 
+                    <!-- Series Select -->
+                    <div v-if="seriesList && seriesList.length > 0" class="flex items-center gap-1.5">
+                        <label for="filter-series" class="font-semibold text-gray-700 dark:text-gray-300">Series:</label>
+                        <select
+                            id="filter-series"
+                            v-model="selectedSeries"
+                            @change="handleSearch"
+                            class="rounded-lg border-gray-300 py-1 pl-2.5 pr-8 text-xs focus:border-indigo-500 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                        >
+                            <option value="">All Series</option>
+                            <option v-for="s in seriesList" :key="s.id" :value="s.slug">
+                                {{ s.title }}
+                            </option>
+                        </select>
+                    </div>
+
                     <!-- Date Range -->
                     <div class="flex items-center gap-1.5">
                         <label for="filter-from" class="font-semibold text-gray-700 dark:text-gray-300">From:</label>
@@ -194,6 +221,15 @@ const clearFilters = () => {
                                     <span>•</span>
                                     <Link :href="route('categories.show', post.category.slug)" class="text-indigo-600 dark:text-indigo-400 font-medium">
                                         {{ post.category.name }}
+                                    </Link>
+                                </template>
+                                <template v-if="post.series">
+                                    <span>•</span>
+                                    <Link
+                                        :href="route('series.show', post.series.slug)"
+                                        class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 transition"
+                                    >
+                                        Series · Part {{ post.series_order || 1 }}
                                     </Link>
                                 </template>
                             </div>

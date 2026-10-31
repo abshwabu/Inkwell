@@ -39,6 +39,11 @@ class AuthorController extends Controller
             ->paginate(10)
             ->withQueryString();
 
+        $series = $author->series()
+            ->withCount(['posts as published_posts_count' => fn ($q) => $q->published()])
+            ->latest()
+            ->get();
+
         return Inertia::render('Author/Show', [
             'author' => [
                 'id' => $author->id,
@@ -53,6 +58,7 @@ class AuthorController extends Controller
                 'created_at' => $author->created_at->format('M Y'),
             ],
             'posts' => $posts,
+            'series' => $series,
             'isFollowing' => $isFollowing,
             'isSelf' => Auth::id() === $author->id,
             'seo' => $this->seoService->forAuthor($author),

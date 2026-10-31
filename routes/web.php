@@ -26,6 +26,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RssFeedController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\SeriesController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\TagController;
 use App\Models\Category;
@@ -51,6 +52,7 @@ Route::get('/robots.txt', function () {
 Route::get('/feed', [RssFeedController::class, 'index'])->name('feed');
 Route::get('/feed/category/{category:slug}', [RssFeedController::class, 'category'])->name('feed.category');
 Route::get('/feed/author/{username}', [RssFeedController::class, 'author'])->name('feed.author');
+Route::get('/series/{slug}/feed', [RssFeedController::class, 'series'])->name('feed.series');
 Route::get('/@{username}/feed', [RssFeedController::class, 'author']);
 Route::get('/category/{category:slug}/feed', [RssFeedController::class, 'category']);
 
@@ -76,6 +78,10 @@ Route::get('/archive/{year}/{month?}', [ArchiveController::class, 'show'])
     ->where(['year' => '[0-9]{4}', 'month' => '[0-9]{1,2}'])
     ->middleware('guest.cache')
     ->name('archive.show');
+
+// Story Series public routes
+Route::get('/series', [SeriesController::class, 'index'])->middleware('guest.cache')->name('series.index');
+Route::get('/series/{series}', [SeriesController::class, 'show'])->middleware('guest.cache')->name('series.show');
 
 // Short post route /p/{slug} and legacy /posts/{post:slug} - 301 redirect to canonical
 Route::get('/p/{post_slug}', [PostController::class, 'showShort'])
@@ -115,6 +121,13 @@ Route::middleware(['auth', 'not.banned', 'throttle:write'])->group(function () {
     Route::post('/posts/{post:slug}/like', [LikeController::class, 'toggle'])->name('posts.like');
     Route::post('/posts/{post:slug}/bookmark', [BookmarkController::class, 'toggle'])->name('posts.bookmark');
     Route::post('/users/{user:username}/follow', [FollowController::class, 'toggle'])->name('users.follow');
+
+    // Series management
+    Route::post('/series', [SeriesController::class, 'store'])->name('series.store');
+    Route::put('/series/{series}', [SeriesController::class, 'update'])->name('series.update');
+    Route::delete('/series/{series}', [SeriesController::class, 'destroy'])->name('series.destroy');
+    Route::post('/series/{series}/reorder', [SeriesController::class, 'reorder'])->name('series.reorder');
+    Route::post('/series/{series}/follow', [SeriesController::class, 'toggleFollow'])->name('series.follow');
 
     Route::post('/reports', [ReportController::class, 'store'])
         ->middleware('throttle:10,1')

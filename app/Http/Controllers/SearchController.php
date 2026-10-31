@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\Post;
+use App\Models\Series;
 use App\Models\Tag;
 use App\Services\SeoService;
 use Illuminate\Http\Request;
@@ -25,15 +26,20 @@ class SearchController extends Controller
         $rawQuery = trim((string) $request->input('q', $request->input('search', '')));
         $categorySlug = $request->input('category');
         $tagSlug = $request->input('tag');
+        $seriesSlug = $request->input('series');
         $dateFrom = $request->input('date_from', $request->input('from'));
         $dateTo = $request->input('date_to', $request->input('to'));
 
         $ftsQuery = $this->formatFtsQuery($rawQuery);
 
         if ($ftsQuery) {
+            $matchingSeriesPostIds = Post::whereHas('series', function ($sq) use ($rawQuery) {
+                $sq->where('title', 'like', "%{$rawQuery}%");
+            })->pluck('id')->toArray();
+
             $postsQuery = Post::query()
                 ->select('posts.*', 'fts.rank as fts_rank', 'fts.search_snippet')
-                ->joinSub(
+                ->leftJoinSub(
                     DB::table('posts_fts')
                         ->selectRaw("post_id, bm25(posts_fts) as rank, snippet(posts_fts, -1, '<mark class=\"bg-amber-200 dark:bg-amber-900/60 font-semibold text-amber-900 dark:text-amber-100 rounded px-1\">', '</mark>', '...', 25) as search_snippet")
                         ->whereRaw('posts_fts MATCH ?', [$ftsQuery]),
@@ -44,7 +50,14 @@ class SearchController extends Controller
                 )
                 ->published()
                 ->withRelations()
-                ->orderBy('fts.rank', 'asc');
+                ->where(function ($q) use ($matchingSeriesPostIds) {
+                    $q->whereNotNull('fts.post_id');
+                    if (! empty($matchingSeriesPostIds)) {
+                        $q->orWhereIn('posts.id', $matchingSeriesPostIds);
+                    }
+                })
+                ->orderByRaw('CASE WHEN fts.rank IS NOT NULL THEN fts.rank ELSE 999.0 END ASC')
+                ->latest('posts.published_at');
         } else {
             $postsQuery = Post::published()
                 ->withRelations()
@@ -64,6 +77,12 @@ class SearchController extends Controller
             });
         }
 
+        if ($seriesSlug) {
+            $postsQuery->whereHas('series', function ($q) use ($seriesSlug) {
+                $q->where('slug', $seriesSlug);
+            });
+        }
+
         if ($dateFrom) {
             $postsQuery->whereDate('posts.published_at', '>=', $dateFrom);
         }
@@ -78,11 +97,13 @@ class SearchController extends Controller
             'query' => $rawQuery,
             'category' => $categorySlug,
             'tag' => $tagSlug,
+            'series' => $seriesSlug,
             'date_from' => $dateFrom,
             'date_to' => $dateTo,
             'posts' => $posts,
             'categories' => Category::orderBy('name')->get(['id', 'name', 'slug']),
             'tags' => Tag::orderBy('name')->get(['id', 'name', 'slug']),
+            'seriesList' => Series::whereHas('posts', fn ($q) => $q->published())->orderBy('title')->get(['id', 'title', 'slug']),
             'seo' => $this->seoService->forPage($rawQuery ? "Search: {$rawQuery}" : 'Search Stories'),
         ]);
     }

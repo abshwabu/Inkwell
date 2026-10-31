@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Category;
 use App\Models\Post;
+use App\Models\Series;
 use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Support\Str;
@@ -37,7 +38,7 @@ class SeoService
         }
         $authorUrl = route('author.show', ['username' => $post->user->username]);
 
-        return [
+        $metadata = [
             'title' => $title,
             'description' => $description,
             'canonical' => $canonical,
@@ -78,6 +79,16 @@ class SeoService
                 ],
             ],
         ];
+
+        if ($post->series_id && $post->series) {
+            $metadata['json_ld']['isPartOf'] = [
+                '@type' => 'CreativeWorkSeries',
+                'name' => $post->series->title,
+                'url' => url("/series/{$post->series->slug}"),
+            ];
+        }
+
+        return $metadata;
     }
 
     /**
@@ -137,6 +148,51 @@ class SeoService
             'image' => $user->avatar_url ?: asset('images/og-default.png'),
             'type' => 'profile',
             'site_name' => $siteName,
+        ];
+    }
+
+    /**
+     * Build SEO metadata for a series page.
+     */
+    public function forSeries(Series $series, int $publishedCount = 0): array
+    {
+        $siteName = $this->settingService->get('site_name', config('app.name', 'Inkwell'));
+        $title = "{$series->title} — {$siteName}";
+        $authorName = $series->author ? $series->author->name : 'Inkwell Author';
+        $description = $series->description ?: "Read {$series->title}, a {$publishedCount}-part story series by {$authorName} on {$siteName}.";
+        $canonical = url("/series/{$series->slug}");
+        $image = $series->cover_image_path ? (str_starts_with($series->cover_image_path, 'http') ? $series->cover_image_path : url($series->cover_image_path)) : asset('images/og-default.png');
+        $authorUrl = $series->author ? route('author.show', ['username' => $series->author->username]) : url('/');
+
+        return [
+            'title' => $title,
+            'description' => $description,
+            'canonical' => $canonical,
+            'image' => $image,
+            'type' => 'website',
+            'site_name' => $siteName,
+            'json_ld' => [
+                '@context' => 'https://schema.org',
+                '@type' => 'CreativeWorkSeries',
+                'name' => $series->title,
+                'description' => $description,
+                'url' => $canonical,
+                'image' => $image,
+                'author' => [
+                    '@type' => 'Person',
+                    'name' => $authorName,
+                    'url' => $authorUrl,
+                ],
+                'publisher' => [
+                    '@type' => 'Organization',
+                    'name' => $siteName,
+                    'url' => url('/'),
+                    'logo' => [
+                        '@type' => 'ImageObject',
+                        'url' => asset('images/logo.png'),
+                    ],
+                ],
+            ],
         ];
     }
 

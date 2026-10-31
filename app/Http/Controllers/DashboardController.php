@@ -19,7 +19,7 @@ class DashboardController extends Controller
         $user = Auth::user();
 
         $tab = $request->input('tab', 'published');
-        if (! in_array($tab, ['published', 'drafts', 'scheduled', 'archived'], true)) {
+        if (! in_array($tab, ['published', 'drafts', 'scheduled', 'archived', 'series'], true)) {
             $tab = 'published';
         }
 
@@ -32,6 +32,7 @@ class DashboardController extends Controller
             'drafts' => $user->posts()->where('status', PostStatus::DRAFT)->count(),
             'scheduled' => $user->posts()->where('status', PostStatus::SCHEDULED)->count(),
             'archived' => $user->posts()->where('status', PostStatus::ARCHIVED)->count(),
+            'series' => $user->series()->count(),
         ];
 
         // Overall stats
@@ -41,6 +42,18 @@ class DashboardController extends Controller
             'total_comments' => (int) $user->posts()->sum('comments_count'),
             'total_stories' => (int) $user->posts()->count(),
         ];
+
+        $seriesList = [];
+        if ($tab === 'series') {
+            $seriesList = $user->series()
+                ->with([
+                    'posts' => fn ($q) => $q->orderBy('series_order', 'asc')->with('category'),
+                ])
+                ->withCount(['posts as published_posts_count' => fn ($q) => $q->published()])
+                ->withCount('posts')
+                ->latest()
+                ->get();
+        }
 
         $targetStatus = match ($tab) {
             'drafts' => PostStatus::DRAFT,
@@ -77,6 +90,7 @@ class DashboardController extends Controller
 
         return Inertia::render('Dashboard', [
             'posts' => $posts,
+            'seriesList' => $seriesList,
             'counts' => $counts,
             'stats' => $stats,
             'filters' => [

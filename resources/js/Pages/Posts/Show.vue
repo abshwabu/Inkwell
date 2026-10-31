@@ -51,10 +51,99 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    seriesContext: {
+        type: Object,
+        default: null,
+    },
 });
 
 const page = usePage();
 const currentUser = computed(() => page.props.auth?.user);
+
+// Series Follow & State
+const localIsFollowingSeries = ref(props.seriesContext?.is_following || false);
+const localSeriesFollowersCount = ref(props.seriesContext?.followers_count || 0);
+const isFollowingSeriesLoading = ref(false);
+
+watch(() => props.seriesContext?.is_following, (val) => { localIsFollowingSeries.value = Boolean(val); });
+watch(() => props.seriesContext?.followers_count, (val) => { localSeriesFollowersCount.value = val || 0; });
+
+const toggleFollowSeries = async () => {
+    if (!requireAuth()) return;
+    if (isFollowingSeriesLoading.value || !props.seriesContext) return;
+
+    isFollowingSeriesLoading.value = true;
+    const prevFollowing = localIsFollowingSeries.value;
+    const prevCount = localSeriesFollowersCount.value;
+
+    localIsFollowingSeries.value = !prevFollowing;
+    localSeriesFollowersCount.value += localIsFollowingSeries.value ? 1 : -1;
+
+    try {
+        const res = await axios.post(route('series.follow', props.seriesContext.slug));
+        localIsFollowingSeries.value = res.data.is_following;
+        localSeriesFollowersCount.value = res.data.followers_count;
+    } catch (err) {
+        localIsFollowingSeries.value = prevFollowing;
+        localSeriesFollowersCount.value = prevCount;
+    } finally {
+        isFollowingSeriesLoading.value = false;
+    }
+};
+
+// Start series from standalone post modal state
+const showStartSeriesModal = ref(false);
+const startSeriesTitle = ref(props.post.title || '');
+const startSeriesDescription = ref('');
+const startSeriesStatus = ref('ongoing');
+const isStartingSeries = ref(false);
+const startSeriesError = ref('');
+
+const openStartSeriesModal = () => {
+    startSeriesTitle.value = props.post.title || '';
+    startSeriesDescription.value = '';
+    startSeriesStatus.value = 'ongoing';
+    startSeriesError.value = '';
+    showStartSeriesModal.value = true;
+};
+
+const submitStartSeries = async () => {
+    if (!startSeriesTitle.value.trim()) {
+        startSeriesError.value = 'Series title is required.';
+        return;
+    }
+
+    isStartingSeries.value = true;
+    startSeriesError.value = '';
+
+    try {
+        const createRes = await axios.post(route('series.store'), {
+            title: startSeriesTitle.value.trim(),
+            description: startSeriesDescription.value.trim() || null,
+            status: startSeriesStatus.value,
+        }, {
+            headers: { Accept: 'application/json' },
+        });
+
+        const newSeries = createRes.data.series;
+
+        // Attach this post as Part 1
+        await axios.put(route('posts.update', props.post.id), {
+            title: props.post.title,
+            content_html: props.post.content_html,
+            status: props.post.status,
+            series_id: newSeries.id,
+            series_order: 1,
+        });
+
+        showStartSeriesModal.value = false;
+        router.reload();
+    } catch (err) {
+        startSeriesError.value = err.response?.data?.message || 'Failed to start series.';
+    } finally {
+        isStartingSeries.value = false;
+    }
+};
 
 // Optimistic UI state
 const localIsLiked = ref(props.isLiked);
@@ -490,6 +579,14 @@ const deleteComment = (comment) => {
                                     >
                                         Edit
                                     </Link>
+                                    <button
+                                        v-if="!post.series_id"
+                                        type="button"
+                                        @click="openStartSeriesModal"
+                                        class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300 transition"
+                                    >
+                                        Start series from post
+                                    </button>
                                 </template>
 
                                 <template v-if="canPublish">
@@ -525,6 +622,46 @@ const deleteComment = (comment) => {
                                 height="630"
                                 class="w-full max-h-[500px] object-cover"
                             />
+                        </div>
+
+                        <!-- Mobile Series Accordion Dropdown -->
+                        <div v-if="seriesContext" class="lg:hidden mt-8 rounded-xl border border-indigo-100 bg-indigo-50/70 p-4 dark:border-indigo-950/60 dark:bg-indigo-950/30">
+                            <details class="group">
+                                <summary class="flex cursor-pointer items-center justify-between text-xs font-bold text-gray-900 dark:text-white">
+                                    <span class="flex items-center gap-2 truncate pr-2">
+                                        <span class="text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider text-[10px]">Series:</span>
+                                        <span class="truncate">{{ seriesContext.title }}</span>
+                                        <span v-if="seriesContext.current_part_number" class="text-gray-400 font-normal shrink-0">(Part {{ seriesContext.current_part_number }} of {{ seriesContext.total_published_parts }})</span>
+                                    </span>
+                                    <span class="transition group-open:rotate-180 text-gray-400">▾</span>
+                                </summary>
+                                <nav class="mt-3 space-y-1.5 border-t border-indigo-100 dark:border-indigo-900/60 pt-3 text-xs">
+                                    <div
+                                        v-for="part in seriesContext.parts"
+                                        :key="part.id"
+                                        class="flex items-center justify-between gap-2"
+                                    >
+                                        <Link
+                                            v-if="part.is_published || seriesContext.is_author"
+                                            :href="route('posts.show', part.slug)"
+                                            :class="[
+                                                part.is_current
+                                                    ? 'font-bold text-indigo-600 dark:text-indigo-400'
+                                                    : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200',
+                                                'truncate block py-1'
+                                            ]"
+                                        >
+                                            <span class="font-mono text-[11px] text-gray-400 mr-1">
+                                                {{ part.display_number ? `${part.display_number}.` : '•' }}
+                                            </span>
+                                            {{ part.title }}
+                                        </Link>
+                                        <span v-if="!part.is_published" class="text-[10px] bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 rounded px-1.5 py-0.5 shrink-0">
+                                            Draft
+                                        </span>
+                                    </div>
+                                </nav>
+                            </details>
                         </div>
 
                         <!-- Mobile Table of Contents Dropdown (When available) -->
@@ -701,8 +838,89 @@ const deleteComment = (comment) => {
                             </div>
                         </div>
 
-                        <!-- Previous and Next Story Navigation -->
-                        <div v-if="previousPost || nextPost" class="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <!-- Series Navigation Block -->
+                        <div v-if="seriesContext" class="mt-10 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/60 via-white to-indigo-50/30 dark:from-indigo-950/30 dark:via-gray-900 dark:to-indigo-950/20 p-6 shadow-sm dark:border-indigo-950/60">
+                            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-100 dark:border-indigo-900/60 pb-4">
+                                <div>
+                                    <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Story Series</span>
+                                    <h4 class="text-base font-bold text-gray-900 dark:text-white">
+                                        <Link :href="route('series.show', seriesContext.slug)" class="hover:underline">
+                                            {{ seriesContext.title }}
+                                        </Link>
+                                    </h4>
+                                </div>
+
+                                <div class="flex items-center gap-2">
+                                    <span class="rounded-full bg-indigo-100 dark:bg-indigo-900/60 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                                        {{ seriesContext.status_label }}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        @click="toggleFollowSeries"
+                                        :disabled="isFollowingSeriesLoading"
+                                        :class="[
+                                            localIsFollowingSeries
+                                                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200'
+                                                : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-sm',
+                                            'rounded-full px-3 py-1 text-xs font-semibold transition disabled:opacity-50'
+                                        ]"
+                                    >
+                                        {{ localIsFollowingSeries ? 'Following Series' : 'Follow Series' }}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Navigation Cards: Previous & Next -->
+                            <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <!-- Previous Part Card -->
+                                <div v-if="seriesContext.prev_part" class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:border-indigo-300 dark:border-gray-800 dark:bg-gray-900 transition">
+                                    <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">← Previous Part</span>
+                                    <h5 class="mt-1 text-sm font-bold text-gray-900 dark:text-white line-clamp-1">
+                                        <Link :href="route('posts.show', seriesContext.prev_part.slug)" class="hover:text-indigo-600 dark:hover:text-indigo-400">
+                                            Part {{ seriesContext.prev_part.display_number }}: {{ seriesContext.prev_part.title }}
+                                        </Link>
+                                    </h5>
+                                </div>
+                                <div v-else class="rounded-xl border border-dashed border-gray-200 dark:border-gray-800 p-4 flex items-center justify-center text-xs text-gray-400">
+                                    First part of series
+                                </div>
+
+                                <!-- Next Part Card -->
+                                <div v-if="seriesContext.next_part" class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:border-indigo-300 dark:border-gray-800 dark:bg-gray-900 transition text-right">
+                                    <span class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Next Part →</span>
+                                    <h5 class="mt-1 text-sm font-bold text-gray-900 dark:text-white line-clamp-1">
+                                        <Link :href="route('posts.show', seriesContext.next_part.slug)" class="hover:text-indigo-600 dark:hover:text-indigo-400">
+                                            Part {{ seriesContext.next_part.display_number }}: {{ seriesContext.next_part.title }}
+                                        </Link>
+                                    </h5>
+                                </div>
+                                <!-- If Last Published Part -->
+                                <div v-else class="rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/60 p-4 flex flex-col items-center justify-center text-center">
+                                    <span class="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                                        {{ seriesContext.status === 'completed' ? 'The End' : 'More coming soon' }}
+                                    </span>
+                                    <span class="text-[11px] text-gray-400 mt-0.5">
+                                        {{ seriesContext.status === 'completed' ? 'This series is complete.' : 'Follow this series to get notified when the next part drops.' }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- "Write the next part" button for series owner only -->
+                            <div v-if="seriesContext.is_author" class="mt-4 pt-4 border-t border-indigo-100 dark:border-indigo-900/60 flex justify-end">
+                                <Link
+                                    :href="route('posts.create', { series: seriesContext.slug })"
+                                    class="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 shadow-sm transition"
+                                >
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    Write the next part
+                                </Link>
+                            </div>
+                        </div>
+
+                        <!-- Previous and Next Story Navigation (When not part of a series) -->
+                        <div v-else-if="previousPost || nextPost" class="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div
                                 v-if="previousPost"
                                 class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:border-indigo-300 transition dark:border-gray-800 dark:bg-gray-900"
@@ -1026,9 +1244,58 @@ const deleteComment = (comment) => {
                     </article>
                 </main>
 
-                <!-- Sticky Table of Contents Sidebar (Desktop) -->
+                <!-- Sticky Table of Contents & Series Sidebar (Desktop) -->
                 <aside class="hidden lg:block lg:col-span-4">
-                    <div class="sticky top-24 space-y-8">
+                    <div class="sticky top-24 space-y-6">
+                        <!-- Desktop Series Card in Sidebar -->
+                        <div v-if="seriesContext" class="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5 shadow-sm dark:border-indigo-950/60 dark:bg-indigo-950/20">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Story Series</span>
+                                <span class="rounded-full bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
+                                    {{ seriesContext.status_label }}
+                                </span>
+                            </div>
+
+                            <h3 class="mt-2 text-sm font-bold text-gray-900 dark:text-white line-clamp-2">
+                                <Link :href="route('series.show', seriesContext.slug)" class="hover:text-indigo-600 dark:hover:text-indigo-400">
+                                    {{ seriesContext.title }}
+                                </Link>
+                            </h3>
+
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                <span v-if="seriesContext.current_part_number">Part {{ seriesContext.current_part_number }} of {{ seriesContext.total_published_parts }}</span>
+                                <span v-else>Draft part</span>
+                            </p>
+
+                            <!-- Ordered Parts List -->
+                            <nav class="mt-3 space-y-1.5 max-h-52 overflow-y-auto pr-1 text-xs border-t border-indigo-100 dark:border-indigo-900/60 pt-3">
+                                <div
+                                    v-for="part in seriesContext.parts"
+                                    :key="part.id"
+                                    class="flex items-center justify-between gap-1.5"
+                                >
+                                    <Link
+                                        v-if="part.is_published || seriesContext.is_author"
+                                        :href="route('posts.show', part.slug)"
+                                        :class="[
+                                            part.is_current
+                                                ? 'font-bold text-indigo-600 dark:text-indigo-400'
+                                                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200',
+                                            'truncate block py-0.5'
+                                        ]"
+                                    >
+                                        <span class="font-mono text-[11px] text-gray-400 mr-1">
+                                            {{ part.display_number ? `${part.display_number}.` : '•' }}
+                                        </span>
+                                        {{ part.title }}
+                                    </Link>
+                                    <span v-if="!part.is_published" class="text-[10px] bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 rounded px-1.5 py-0.5 shrink-0">
+                                        Draft
+                                    </span>
+                                </div>
+                            </nav>
+                        </div>
+
                         <div v-if="toc && toc.length > 0" class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                             <h3 class="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                                 Table of Contents
@@ -1096,5 +1363,71 @@ const deleteComment = (comment) => {
             @close="reportModalOpen = false"
             @reported="reportModalOpen = false"
         />
+
+        <!-- Start New Series From Post Modal -->
+        <div v-if="showStartSeriesModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-4">
+                <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+                    <h3 class="font-serif text-lg font-bold text-gray-900 dark:text-white">Start a New Series</h3>
+                    <button type="button" @click="showStartSeriesModal = false" class="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+                </div>
+
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                    This story will become <strong class="text-indigo-600 dark:text-indigo-400">Part 1</strong> of the new series.
+                </p>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300">Series Title</label>
+                    <input
+                        type="text"
+                        v-model="startSeriesTitle"
+                        placeholder="e.g. Building Modern Web Apps"
+                        class="mt-1 w-full text-xs rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    />
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300">Description (Optional)</label>
+                    <textarea
+                        rows="3"
+                        v-model="startSeriesDescription"
+                        placeholder="What will this series cover?"
+                        class="mt-1 w-full text-xs rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    ></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300">Status</label>
+                    <select
+                        v-model="startSeriesStatus"
+                        class="mt-1 w-full text-xs rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    >
+                        <option value="ongoing">Ongoing</option>
+                        <option value="completed">Completed</option>
+                        <option value="hiatus">Hiatus</option>
+                    </select>
+                </div>
+
+                <p v-if="startSeriesError" class="text-xs text-red-500">{{ startSeriesError }}</p>
+
+                <div class="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                    <button
+                        type="button"
+                        @click="showStartSeriesModal = false"
+                        class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        @click="submitStartSeries"
+                        :disabled="isStartingSeries"
+                        class="rounded-lg bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition"
+                    >
+                        {{ isStartingSeries ? 'Creating...' : 'Create & Attach Story' }}
+                    </button>
+                </div>
+            </div>
+        </div>
     </AppLayout>
 </template>

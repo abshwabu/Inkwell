@@ -47,6 +47,13 @@ class UpdatePostRequest extends FormRequest
                 Rule::unique('posts', 'slug')->ignore($postId),
             ],
             'category_id' => ['nullable', 'exists:categories,id'],
+            'series_id' => [
+                'nullable',
+                Rule::exists('series', 'id')->where(function ($query) {
+                    $query->where('user_id', $this->user()?->id);
+                }),
+            ],
+            'series_order' => ['nullable', 'integer', 'min:1'],
             'excerpt' => ['nullable', 'string', 'max:500'],
             'cover_image_path' => ['nullable', 'string', 'max:1000'],
             'seo_title' => ['nullable', 'string', 'max:255'],

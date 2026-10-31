@@ -173,8 +173,9 @@ class FeedService
         }
 
         $followingIds = $user->following()->pluck('users.id')->toArray();
-        if (empty($followingIds)) {
-            // Cold-start fallback if user follows no one
+        $followedSeriesIds = $user->followedSeries()->pluck('series.id')->toArray();
+        if (empty($followingIds) && empty($followedSeriesIds)) {
+            // Cold-start fallback if user follows no one and no series
             return $this->getTrendingFeed($user, $page, $perPage, null, 7, $categoryId);
         }
 
@@ -182,7 +183,14 @@ class FeedService
 
         $query = Post::published()
             ->withRelations()
-            ->whereIn('posts.user_id', $followingIds)
+            ->where(function ($q) use ($followingIds, $followedSeriesIds) {
+                if (! empty($followingIds)) {
+                    $q->whereIn('posts.user_id', $followingIds);
+                }
+                if (! empty($followedSeriesIds)) {
+                    $q->orWhereIn('posts.series_id', $followedSeriesIds);
+                }
+            })
             ->where('posts.user_id', '!=', $user->id)
             ->whereNull('posts.deleted_at');
 
@@ -352,6 +360,13 @@ class FeedService
             $followedSql = "(CASE WHEN posts.user_id IN ({$authorIds}) THEN 40.0 ELSE 0.0 END)";
         }
 
+        // 5b. Followed series boost: +30
+        $followedSeriesSql = '0.0';
+        if (! empty($signals['followed_series_ids'])) {
+            $seriesIds = implode(',', array_map('intval', $signals['followed_series_ids']));
+            $followedSeriesSql = "(CASE WHEN posts.series_id IN ({$seriesIds}) THEN 30.0 ELSE 0.0 END)";
+        }
+
         // 6. Engagement log-scaled
         $engagementSql = '((5.0 * log(1.0 + posts.likes_count)) + (4.0 * log(1.0 + posts.comments_count)) + (1.0 * log(1.0 + posts.views_count)))';
 
@@ -369,7 +384,7 @@ class FeedService
             $dismissedCatSql = "(CASE WHEN posts.category_id IN ({$dismissedCatIds}) THEN -30.0 ELSE 0.0 END)";
         }
 
-        return "({$recencySql} + {$categorySql} + {$affinitySql} + {$tagSql} + {$followedSql} + {$engagementSql} + {$viewedSql} + {$dismissedCatSql})";
+        return "({$recencySql} + {$categorySql} + {$affinitySql} + {$tagSql} + {$followedSql} + {$followedSeriesSql} + {$engagementSql} + {$viewedSql} + {$dismissedCatSql})";
     }
 
     /**
@@ -411,6 +426,11 @@ class FeedService
             $score += 40.0;
         }
 
+        // 5b. Followed series boost (+30)
+        if (! empty($signals['followed_series_ids']) && $post->series_id && in_array((int) $post->series_id, $signals['followed_series_ids'], true)) {
+            $score += 30.0;
+        }
+
         // 6. Engagement (log-scaled)
         $likes = (float) ($post->likes_count ?? 0);
         $comments = (float) ($post->comments_count ?? 0);
@@ -439,6 +459,7 @@ class FeedService
             $preferredCategoryIds = $user->preferredCategories()->pluck('categories.id')->map(fn ($id) => (int) $id)->toArray();
             $preferredTagIds = $user->preferredTags()->pluck('tags.id')->map(fn ($id) => (int) $id)->toArray();
             $followedAuthorIds = $user->following()->pluck('users.id')->map(fn ($id) => (int) $id)->toArray();
+            $followedSeriesIds = $user->followedSeries()->pluck('series.id')->map(fn ($id) => (int) $id)->toArray();
             $viewedPostIds = $user->postViews()->latest('viewed_at')->take(200)->pluck('post_id')->map(fn ($id) => (int) $id)->toArray();
             $dismissedPostIds = $user->dismissedPosts()->pluck('post_id')->map(fn ($id) => (int) $id)->toArray();
             $dismissedCategoryIds = $user->dismissedPosts()->whereNotNull('category_id')->pluck('category_id')->unique()->map(fn ($id) => (int) $id)->toArray();
@@ -475,6 +496,7 @@ class FeedService
             $hasSignals = ! empty($preferredCategoryIds)
                 || ! empty($preferredTagIds)
                 || ! empty($followedAuthorIds)
+                || ! empty($followedSeriesIds)
                 || ! empty($categoryAffinity)
                 || ! empty($tagAffinity);
 
@@ -483,6 +505,7 @@ class FeedService
                 'preferred_category_ids' => $preferredCategoryIds,
                 'preferred_tag_ids' => $preferredTagIds,
                 'followed_author_ids' => $followedAuthorIds,
+                'followed_series_ids' => $followedSeriesIds,
                 'viewed_post_ids' => $viewedPostIds,
                 'dismissed_post_ids' => $dismissedPostIds,
                 'dismissed_category_ids' => $dismissedCategoryIds,
@@ -505,6 +528,7 @@ class FeedService
             'preferred_category_ids' => $guestCategories,
             'preferred_tag_ids' => $guestTags,
             'followed_author_ids' => [],
+            'followed_series_ids' => [],
             'viewed_post_ids' => $guestViewed,
             'dismissed_post_ids' => $guestDismissed,
             'dismissed_category_ids' => $guestDismissedCategories,

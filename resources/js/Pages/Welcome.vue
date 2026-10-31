@@ -41,6 +41,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    continueReading: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const page = usePage();
@@ -386,6 +390,63 @@ const toggleFollow = async (target) => {
                         </button>
                     </div>
 
+                    <!-- Continue Reading Row for Logged-In Users -->
+                    <div v-if="continueReading && continueReading.length > 0" class="mb-8 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-5 dark:border-indigo-950/60 dark:bg-indigo-950/20">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
+                                <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                                </svg>
+                                Continue Reading
+                            </h3>
+                            <Link :href="route('series.index')" class="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+                                Explore series →
+                            </Link>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div
+                                v-for="item in continueReading"
+                                :key="item.series_id"
+                                class="rounded-xl border border-white/60 bg-white p-3.5 shadow-xs dark:border-gray-800 dark:bg-gray-900 flex flex-col justify-between"
+                            >
+                                <div>
+                                    <div class="flex items-center justify-between gap-2">
+                                        <Link :href="route('series.show', item.series_slug)" class="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline truncate">
+                                            {{ item.series_title }}
+                                        </Link>
+                                        <span class="text-[10px] text-gray-400 shrink-0 font-medium">
+                                            {{ item.read_parts }}/{{ item.total_parts }} parts
+                                        </span>
+                                    </div>
+
+                                    <h4 class="mt-1 text-xs font-bold text-gray-900 dark:text-white line-clamp-1">
+                                        <Link :href="route('posts.show', item.next_part.slug)" class="hover:text-indigo-600 dark:hover:text-indigo-400">
+                                            Part {{ item.next_part.display_number }}: {{ item.next_part.title }}
+                                        </Link>
+                                    </h4>
+                                </div>
+
+                                <div class="mt-3">
+                                    <div class="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                                        <div class="bg-indigo-600 h-1.5 rounded-full" :style="{ width: `${item.progress_percent}%` }"></div>
+                                    </div>
+                                    <div class="mt-2 flex justify-between items-center">
+                                        <span class="text-[10px] text-gray-400">
+                                            {{ item.has_unread_next ? 'Up next' : 'Completed' }}
+                                        </span>
+                                        <Link
+                                            :href="route('posts.show', item.next_part.slug)"
+                                            class="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                                        >
+                                            {{ item.has_unread_next ? 'Resume →' : 'Revisit →' }}
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Feed Tabs Header -->
                     <div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 pb-2 mb-6">
                         <nav class="flex space-x-6 text-sm font-semibold">
@@ -459,6 +520,18 @@ const toggleFollow = async (target) => {
                                                     >
                                                         {{ post.category.name }}
                                                     </Link>
+
+                                                    <template v-if="post.series">
+                                                        <span>•</span>
+                                                        <Link
+                                                            :href="route('series.show', post.series.slug)"
+                                                            class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 transition"
+                                                        >
+                                                            <span>Series</span>
+                                                            <span>·</span>
+                                                            <span>Part {{ post.series_order || 1 }}</span>
+                                                        </Link>
+                                                    </template>
                                                 </div>
 
                                                 <!-- Not Interested Action Dropdown / Button -->

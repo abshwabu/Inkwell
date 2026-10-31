@@ -20,6 +20,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    userSeries: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const form = useForm({
@@ -27,6 +31,8 @@ const form = useForm({
     title: props.post.title,
     slug: props.post.slug,
     category_id: props.post.category_id || '',
+    series_id: props.post.series_id || null,
+    series_order: props.post.series_order || null,
     excerpt: props.post.excerpt || '',
     cover_image_path: props.post.cover_image_path || '',
     seo_title: props.post.seo_title || '',
@@ -327,6 +333,7 @@ const deletePost = () => {
             :form="form"
             :categories="categories"
             :availableTags="availableTags"
+            :userSeries="userSeries"
             :isEdit="true"
             @close="isSettingsOpen = false"
             @markDirty="markDirty"

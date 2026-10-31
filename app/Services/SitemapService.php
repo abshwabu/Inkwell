@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Category;
 use App\Models\Post;
+use App\Models\Series;
 use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -40,6 +41,13 @@ class SitemapService
             'priority' => '0.6',
         ];
 
+        $urls[] = [
+            'loc' => url('/series'),
+            'lastmod' => Carbon::now()->toIso8601String(),
+            'changefreq' => 'daily',
+            'priority' => '0.8',
+        ];
+
         // 2. Categories
         $categories = Category::orderBy('name')->get();
         foreach ($categories as $category) {
@@ -70,6 +78,17 @@ class SitemapService
                 'lastmod' => $author->updated_at?->toIso8601String() ?? Carbon::now()->toIso8601String(),
                 'changefreq' => 'weekly',
                 'priority' => '0.7',
+            ];
+        }
+
+        // 4b. Series with at least one published post
+        $seriesList = Series::whereHas('posts', fn ($q) => $q->published())->get();
+        foreach ($seriesList as $seriesItem) {
+            $urls[] = [
+                'loc' => url("/series/{$seriesItem->slug}"),
+                'lastmod' => ($seriesItem->updated_at ?? Carbon::now())->toIso8601String(),
+                'changefreq' => 'weekly',
+                'priority' => '0.8',
             ];
         }
 

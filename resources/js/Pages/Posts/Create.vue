@@ -16,6 +16,14 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    userSeries: {
+        type: Array,
+        default: () => [],
+    },
+    initialSeries: {
+        type: Object,
+        default: null,
+    },
 });
 
 const form = useForm({
@@ -23,6 +31,8 @@ const form = useForm({
     title: '',
     slug: '',
     category_id: '',
+    series_id: props.initialSeries?.id || null,
+    series_order: props.initialSeries?.next_order || null,
     excerpt: '',
     cover_image_path: '',
     seo_title: '',
@@ -311,6 +321,7 @@ const onConfirmSchedule = (scheduledDateTime) => {
             :form="form"
             :categories="categories"
             :availableTags="availableTags"
+            :userSeries="userSeries"
             :isEdit="false"
             @close="isSettingsOpen = false"
             @markDirty="markDirty"

@@ -11,6 +11,10 @@ const props = defineProps({
         type: Object,
         required: true,
     },
+    series: {
+        type: Array,
+        default: () => [],
+    },
     isFollowing: {
         type: Boolean,
         default: false,
@@ -129,6 +133,50 @@ const toggleFollow = () => {
                 </div>
             </div>
 
+            <!-- Series by this author -->
+            <section v-if="series && series.length > 0" class="mt-10">
+                <div class="flex items-center justify-between pb-4">
+                    <h2 class="font-serif text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+                        Series by this author
+                    </h2>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div
+                        v-for="s in series"
+                        :key="s.id"
+                        class="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm hover:border-indigo-300 dark:border-gray-800 dark:bg-gray-900 transition flex flex-col justify-between"
+                    >
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <span class="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                                    {{ s.status === 'completed' ? 'Completed' : (s.status === 'hiatus' ? 'Hiatus' : 'Ongoing') }}
+                                </span>
+                                <span class="text-xs text-gray-400">
+                                    {{ s.published_posts_count }} {{ s.published_posts_count === 1 ? 'part' : 'parts' }}
+                                </span>
+                            </div>
+
+                            <h3 class="mt-2 font-serif text-lg font-bold text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition">
+                                <Link :href="route('series.show', s.slug)">
+                                    {{ s.title }}
+                                </Link>
+                            </h3>
+
+                            <p v-if="s.description" class="mt-1.5 text-xs text-gray-600 dark:text-gray-300 line-clamp-2 leading-relaxed">
+                                {{ s.description }}
+                            </p>
+                        </div>
+
+                        <div class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800 flex justify-end">
+                            <Link :href="route('series.show', s.slug)" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                                View series →
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Published Posts Section -->
             <section class="mt-10">
                 <div class="flex items-center justify-between pb-6">
@@ -152,6 +200,13 @@ const toggleFollow = () => {
                                     >
                                         {{ post.category.name }}
                                     </span>
+                                    <Link
+                                        v-if="post.series"
+                                        :href="route('series.show', post.series.slug)"
+                                        class="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 transition"
+                                    >
+                                        Series · Part {{ post.series_order || 1 }}
+                                    </Link>
                                     <span>{{ post.reading_time_minutes }} min read</span>
                                     <span>•</span>
                                     <span>{{ new Date(post.published_at).toLocaleDateString() }}</span>

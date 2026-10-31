@@ -9,10 +9,12 @@ use App\Jobs\IncrementPostViewJob;
 use App\Models\Category;
 use App\Models\Post;
 use App\Models\PostView;
+use App\Models\Series;
 use App\Models\Tag;
 use App\Services\BotDetectorService;
 use App\Services\ContentSanitizerService;
 use App\Services\SeoService;
+use App\Services\SeriesService;
 use App\Services\SpamProtectionService;
 use App\Services\TableOfContentsService;
 use Carbon\Carbon;
@@ -32,7 +34,8 @@ class PostController extends Controller
         protected BotDetectorService $botDetector,
         protected TableOfContentsService $tocService,
         protected SpamProtectionService $spamProtectionService,
-        protected SeoService $seoService
+        protected SeoService $seoService,
+        protected SeriesService $seriesService
     ) {}
 
     /**
@@ -131,6 +134,7 @@ class PostController extends Controller
             'user',
             'category',
             'tags',
+            'series',
             'comments' => fn ($query) => $query->withTrashed()
                 ->where('status', \App\Enums\CommentStatus::VISIBLE)
                 ->whereNull('parent_id')
@@ -140,6 +144,10 @@ class PostController extends Controller
                 ])
                 ->latest(),
         ]);
+
+        // Record reading progress and build series context
+        $this->seriesService->recordProgress(Auth::user(), $post);
+        $seriesContext = $this->seriesService->getSeriesContextForPost($post, Auth::user());
 
         // Auto-generate Table of Contents from headings
         $tocResult = $this->tocService->extractAndInject($post->content_html ?? '');
@@ -200,6 +208,7 @@ class PostController extends Controller
             ],
             'isLiked' => $isLiked,
             'isBookmarked' => $isBookmarked,
+            'seriesContext' => $seriesContext,
             'canEdit' => Auth::check() && Auth::user()->can('update', $post),
             'canDelete' => Auth::check() && Auth::user()->can('delete', $post),
             'canPublish' => Auth::check() && Auth::user()->can('publish', $post),
@@ -210,13 +219,38 @@ class PostController extends Controller
     /**
      * Show distraction-free form to write a new post (Auth required).
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
         Gate::authorize('create', Post::class);
+
+        $initialSeries = null;
+        if ($request->has('series')) {
+            $seriesSlug = $request->input('series');
+            $series = Series::where('slug', $seriesSlug)->firstOrFail();
+
+            if ($series->user_id !== Auth::id()) {
+                abort(403, 'Unauthorized to add stories to this series.');
+            }
+
+            $nextOrder = ($series->posts()->max('series_order') ?? 0) + 1;
+            $initialSeries = [
+                'id' => $series->id,
+                'title' => $series->title,
+                'slug' => $series->slug,
+                'next_order' => $nextOrder,
+            ];
+        }
+
+        $userSeries = Auth::user()->series()
+            ->withCount('posts')
+            ->latest()
+            ->get(['id', 'title', 'slug', 'status']);
 
         return Inertia::render('Posts/Create', [
             'categories' => Category::orderBy('name')->get(['id', 'name']),
             'availableTags' => Tag::orderBy('name')->get(['id', 'name', 'slug']),
+            'userSeries' => $userSeries,
+            'initialSeries' => $initialSeries,
         ]);
     }
 
@@ -255,6 +289,15 @@ class PostController extends Controller
 
         $this->spamProtectionService->validateBlockedWords($title, $rawHtml);
 
+        $seriesId = $validated['series_id'] ?? null;
+        $seriesOrder = null;
+        if ($seriesId) {
+            $series = Series::where('id', $seriesId)->where('user_id', Auth::id())->firstOrFail();
+            $seriesOrder = ! empty($validated['series_order'])
+                ? (int) $validated['series_order']
+                : (($series->posts()->max('series_order') ?? 0) + 1);
+        }
+
         // If finalizing an existing autosaved draft
         if (! empty($validated['id'])) {
             $post = Post::findOrFail($validated['id']);
@@ -263,6 +306,8 @@ class PostController extends Controller
             $updateData = [
                 'title' => $title,
                 'category_id' => $validated['category_id'] ?? null,
+                'series_id' => $seriesId,
+                'series_order' => $seriesOrder,
                 'excerpt' => $excerpt,
                 'cover_image_path' => $validated['cover_image_path'] ?? null,
                 'seo_title' => $validated['seo_title'] ?? null,
@@ -280,6 +325,10 @@ class PostController extends Controller
             $post->update($updateData);
             $this->syncTags($post, $validated['tags'] ?? []);
 
+            if ($status === PostStatus::PUBLISHED && $post->series_id) {
+                $this->seriesService->notifyFollowers($post);
+            }
+
             return redirect()->route($status === PostStatus::PUBLISHED ? 'posts.show' : 'dashboard', $status === PostStatus::PUBLISHED ? $post->slug : []);
         }
 
@@ -288,6 +337,8 @@ class PostController extends Controller
         $createData = [
             'user_id' => Auth::id(),
             'category_id' => $validated['category_id'] ?? null,
+            'series_id' => $seriesId,
+            'series_order' => $seriesOrder,
             'title' => $title,
             'excerpt' => $excerpt,
             'cover_image_path' => $validated['cover_image_path'] ?? null,
@@ -306,6 +357,10 @@ class PostController extends Controller
         $post = Post::create($createData);
         $this->syncTags($post, $validated['tags'] ?? []);
 
+        if ($status === PostStatus::PUBLISHED && $post->series_id) {
+            $this->seriesService->notifyFollowers($post);
+        }
+
         return redirect()->route($status === PostStatus::PUBLISHED ? 'posts.show' : 'dashboard', $status === PostStatus::PUBLISHED ? $post->slug : []);
     }
 
@@ -316,12 +371,18 @@ class PostController extends Controller
     {
         Gate::authorize('update', $post);
 
-        $post->load(['tags', 'category']);
+        $post->load(['tags', 'category', 'series']);
+
+        $userSeries = Auth::user()->series()
+            ->withCount('posts')
+            ->latest()
+            ->get(['id', 'title', 'slug', 'status']);
 
         return Inertia::render('Posts/Edit', [
             'post' => $post,
             'categories' => Category::orderBy('name')->get(['id', 'name']),
             'availableTags' => Tag::orderBy('name')->get(['id', 'name', 'slug']),
+            'userSeries' => $userSeries,
         ]);
     }
 
@@ -362,9 +423,28 @@ class PostController extends Controller
 
         $this->spamProtectionService->validateBlockedWords($title, $rawHtml);
 
+        $seriesId = array_key_exists('series_id', $validated) ? $validated['series_id'] : $post->series_id;
+        $seriesOrder = $post->series_order;
+
+        if ($seriesId) {
+            $series = Series::where('id', $seriesId)->where('user_id', Auth::id())->firstOrFail();
+            if ($seriesId != $post->series_id || empty($seriesOrder)) {
+                $seriesOrder = ! empty($validated['series_order'])
+                    ? (int) $validated['series_order']
+                    : (($series->posts()->max('series_order') ?? 0) + 1);
+            } elseif (! empty($validated['series_order'])) {
+                $seriesOrder = (int) $validated['series_order'];
+            }
+        } else {
+            $seriesId = null;
+            $seriesOrder = null;
+        }
+
         $updateData = [
             'title' => $title,
             'category_id' => $validated['category_id'] ?? null,
+            'series_id' => $seriesId,
+            'series_order' => $seriesOrder,
             'excerpt' => $excerpt,
             'cover_image_path' => $validated['cover_image_path'] ?? null,
             'seo_title' => $validated['seo_title'] ?? null,
@@ -385,6 +465,10 @@ class PostController extends Controller
             $this->syncTags($post, $validated['tags']);
         }
 
+        if ($status === PostStatus::PUBLISHED && $post->series_id) {
+            $this->seriesService->notifyFollowers($post);
+        }
+
         return redirect()->route($status === PostStatus::PUBLISHED ? 'posts.show' : 'dashboard', $status === PostStatus::PUBLISHED ? $post->slug : []);
     }
 
@@ -398,6 +482,8 @@ class PostController extends Controller
             'title' => 'nullable|string|max:255',
             'slug' => 'nullable|string|max:255',
             'category_id' => 'nullable|exists:categories,id',
+            'series_id' => 'nullable|exists:series,id',
+            'series_order' => 'nullable|integer',
             'excerpt' => 'nullable|string|max:500',
             'cover_image_path' => 'nullable|string|max:1000',
             'seo_title' => 'nullable|string|max:255',
@@ -431,6 +517,11 @@ class PostController extends Controller
                 'content_html' => $sanitizedHtml,
             ];
 
+            if (array_key_exists('series_id', $validated)) {
+                $updateData['series_id'] = $validated['series_id'];
+                $updateData['series_order'] = $validated['series_order'] ?? $post->series_order;
+            }
+
             if (! empty($validated['slug']) && $validated['slug'] !== $post->slug) {
                 $slugCandidate = Str::slug($validated['slug']);
                 if (! Post::where('slug', $slugCandidate)->where('id', '!=', $post->id)->exists()) {
@@ -450,6 +541,8 @@ class PostController extends Controller
                 'user_id' => Auth::id(),
                 'title' => $title,
                 'category_id' => $validated['category_id'] ?? null,
+                'series_id' => $validated['series_id'] ?? null,
+                'series_order' => $validated['series_order'] ?? null,
                 'excerpt' => $validated['excerpt'] ?? null,
                 'cover_image_path' => $validated['cover_image_path'] ?? null,
                 'seo_title' => $validated['seo_title'] ?? null,
@@ -502,6 +595,10 @@ class PostController extends Controller
                 'status' => PostStatus::PUBLISHED,
                 'published_at' => now(),
             ]);
+
+            if ($post->series_id) {
+                $this->seriesService->notifyFollowers($post);
+            }
         }
 
         return back();

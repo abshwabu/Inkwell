@@ -153,6 +153,38 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Series authored by the user.
+     */
+    public function series(): HasMany
+    {
+        return $this->hasMany(Series::class);
+    }
+
+    /**
+     * Series this user follows.
+     */
+    public function followedSeries(): BelongsToMany
+    {
+        return $this->belongsToMany(Series::class, 'series_follows')->withTimestamps();
+    }
+
+    /**
+     * Check if user is following target series.
+     */
+    public function isFollowingSeries(Series $series): bool
+    {
+        return $this->followedSeries()->where('series_id', $series->id)->exists();
+    }
+
+    /**
+     * User's reading progress across series.
+     */
+    public function seriesProgress(): HasMany
+    {
+        return $this->hasMany(SeriesProgress::class);
+    }
+
+    /**
      * Users that this user is following.
      */
     public function following(): BelongsToMany

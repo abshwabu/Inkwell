@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Enums\PostStatus;
 use App\Models\Post;
+use App\Services\SeriesService;
 use Illuminate\Console\Command;
 
 class PublishScheduledPosts extends Command
@@ -21,7 +22,7 @@ class PublishScheduledPosts extends Command
     /**
      * Execute the console command.
      */
-    public function handle(): int
+    public function handle(SeriesService $seriesService): int
     {
         $posts = Post::where('status', PostStatus::SCHEDULED)
             ->whereNotNull('published_at')
@@ -33,6 +34,11 @@ class PublishScheduledPosts extends Command
             $post->update([
                 'status' => PostStatus::PUBLISHED,
             ]);
+
+            if ($post->series_id) {
+                $seriesService->notifyFollowers($post);
+            }
+
             $count++;
         }
 

@@ -8,6 +8,7 @@ use App\Models\Post;
 use App\Models\Tag;
 use App\Services\FeedService;
 use App\Services\SeoService;
+use App\Services\SeriesService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,7 +21,8 @@ class FeedController extends Controller
 {
     public function __construct(
         protected FeedService $feedService,
-        protected SeoService $seoService
+        protected SeoService $seoService,
+        protected SeriesService $seriesService
     ) {}
 
     /**
@@ -91,6 +93,7 @@ class FeedController extends Controller
             'guestPreferences' => $guestPrefs,
             'selectedCategory' => $selectedCategorySlug,
             'followingUserIds' => $followingUserIds,
+            'continueReading' => $user ? $this->seriesService->getContinueReadingList($user) : [],
             'seo' => $this->seoService->forHome(),
         ]);
     }

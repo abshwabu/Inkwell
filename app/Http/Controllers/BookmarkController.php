@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Bookmark;
 use App\Models\Post;
 use App\Services\FeedService;
+use App\Services\SeriesService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,7 +18,7 @@ class BookmarkController extends Controller
     /**
      * Display the authenticated user's reading list.
      */
-    public function index(Request $request): Response
+    public function index(Request $request, SeriesService $seriesService): Response
     {
         $user = $request->user();
 
@@ -28,8 +29,11 @@ class BookmarkController extends Controller
             ->paginate(12)
             ->withQueryString();
 
+        $continueReading = $seriesService->getContinueReadingList($user);
+
         return Inertia::render('Bookmarks/Index', [
             'posts' => $bookmarkedPosts,
+            'continueReading' => $continueReading,
         ]);
     }
 
