@@ -6,6 +6,8 @@ import DarkModeToggle from '@/Components/DarkModeToggle.vue';
 import RichEditor from '@/Components/Editor/RichEditor.vue';
 import PostSettingsDrawer from '@/Components/Editor/PostSettingsDrawer.vue';
 import ScheduleModal from '@/Components/Editor/ScheduleModal.vue';
+import ConfirmModal from '@/Components/ConfirmModal.vue';
+import { useConfirmModal } from '@/Composables/useConfirmModal';
 
 const props = defineProps({
     post: {
@@ -115,14 +117,24 @@ const onBeforeUnload = (event) => {
     }
 };
 
+const { modalState, confirm, alert, handleConfirm, handleClose } = useConfirmModal();
+
 onMounted(() => {
     window.addEventListener('beforeunload', onBeforeUnload);
 
     removeInertiaListener = router.on('before', (event) => {
         if (isDirty.value && !isSubmitting.value) {
-            if (!confirm('You have unsaved changes in your story. Are you sure you want to leave?')) {
-                event.preventDefault();
-            }
+            event.preventDefault();
+            confirm({
+                title: 'Unsaved Changes',
+                message: 'You have unsaved changes in your story. Are you sure you want to leave?',
+                confirmText: 'Leave Page',
+                variant: 'warning',
+                onConfirm: () => {
+                    isDirty.value = false;
+                    router.visit(event.detail.visit.url);
+                },
+            });
         }
     });
 
@@ -143,7 +155,11 @@ const submitSave = (targetStatus = null) => {
         form.status = targetStatus;
     }
     if (form.status === 'published' && (!form.title.trim() || wordCount.value < 100)) {
-        alert('A title and at least 100 words are required to publish a story.');
+        alert({
+            title: 'Cannot Publish',
+            message: 'A title and at least 100 words are required to publish a story.',
+            variant: 'warning',
+        });
         return;
     }
 
@@ -158,7 +174,11 @@ const submitSave = (targetStatus = null) => {
 
 const openSchedule = () => {
     if (!form.title.trim() || wordCount.value < 100) {
-        alert('A title and at least 100 words are required to schedule a story.');
+        alert({
+            title: 'Cannot Schedule',
+            message: 'A title and at least 100 words are required to schedule a story.',
+            variant: 'warning',
+        });
         return;
     }
     isScheduleModalOpen.value = true;
@@ -172,37 +192,55 @@ const onConfirmSchedule = (scheduledDateTime) => {
 };
 
 const unpublishPost = () => {
-    if (confirm('Are you sure you want to revert this story to a draft?')) {
-        isSubmitting.value = true;
-        isDirty.value = false;
-        router.post(route('posts.unpublish', props.post.slug), {}, {
-            onSuccess: () => {
-                form.status = 'draft';
-                isSubmitting.value = false;
-            },
-        });
-    }
+    confirm({
+        title: 'Revert to Draft',
+        message: 'Are you sure you want to revert this story to a draft? It will be removed from public feeds and only visible to you.',
+        confirmText: 'Revert to Draft',
+        variant: 'warning',
+        onConfirm: () => {
+            isSubmitting.value = true;
+            isDirty.value = false;
+            router.post(route('posts.unpublish', props.post.slug), {}, {
+                onSuccess: () => {
+                    form.status = 'draft';
+                    isSubmitting.value = false;
+                },
+            });
+        },
+    });
 };
 
 const archivePost = () => {
-    if (confirm('Archive this story? It will no longer be visible publicly.')) {
-        isSubmitting.value = true;
-        isDirty.value = false;
-        router.post(route('posts.archive', props.post.slug), {}, {
-            onSuccess: () => {
-                form.status = 'archived';
-                isSubmitting.value = false;
-            },
-        });
-    }
+    confirm({
+        title: 'Archive Story',
+        message: 'Archive this story? It will no longer be visible publicly or listed in feeds.',
+        confirmText: 'Archive Story',
+        variant: 'warning',
+        onConfirm: () => {
+            isSubmitting.value = true;
+            isDirty.value = false;
+            router.post(route('posts.archive', props.post.slug), {}, {
+                onSuccess: () => {
+                    form.status = 'archived';
+                    isSubmitting.value = false;
+                },
+            });
+        },
+    });
 };
 
 const deletePost = () => {
-    if (confirm('Are you sure you want to delete this story? You can restore it later.')) {
-        isSubmitting.value = true;
-        isDirty.value = false;
-        router.delete(route('posts.destroy', props.post.slug));
-    }
+    confirm({
+        title: 'Move Story to Trash',
+        message: 'Are you sure you want to delete this story? You can restore it later from your dashboard.',
+        confirmText: 'Move to Trash',
+        variant: 'danger',
+        onConfirm: () => {
+            isSubmitting.value = true;
+            isDirty.value = false;
+            router.delete(route('posts.destroy', props.post.slug));
+        },
+    });
 };
 </script>
 
@@ -348,6 +386,18 @@ const deletePost = () => {
             :initialDate="form.published_at"
             @close="isScheduleModalOpen = false"
             @confirm="onConfirmSchedule"
+        />
+
+        <ConfirmModal
+            :show="modalState.show"
+            :title="modalState.title"
+            :message="modalState.message"
+            :confirm-text="modalState.confirmText"
+            :cancel-text="modalState.cancelText"
+            :variant="modalState.variant"
+            :type="modalState.type"
+            @confirm="handleConfirm"
+            @close="handleClose"
         />
     </div>
 </template>

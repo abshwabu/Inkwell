@@ -2,6 +2,8 @@
 import { ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import ConfirmModal from '@/Components/ConfirmModal.vue';
+import { useConfirmModal } from '@/Composables/useConfirmModal';
 
 const props = defineProps({
     reports: {
@@ -50,14 +52,22 @@ const submitAction = () => {
     }
 };
 
+const { modalState, confirm, handleConfirm, handleClose } = useConfirmModal();
+
 const dismissReport = (report) => {
     router.post(route('admin.reports.dismiss', report.id), {}, { preserveScroll: true });
 };
 
 const hideContent = (report) => {
-    if (confirm('Hide this reported content from public view?')) {
-        router.post(route('admin.reports.hide', report.id), {}, { preserveScroll: true });
-    }
+    confirm({
+        title: 'Hide Content',
+        message: 'Are you sure you want to hide this reported content from public view?',
+        confirmText: 'Hide Content',
+        variant: 'warning',
+        onConfirm: () => {
+            router.post(route('admin.reports.hide', report.id), {}, { preserveScroll: true });
+        },
+    });
 };
 
 const switchStatus = (status) => {
@@ -329,5 +339,17 @@ const switchStatus = (status) => {
                 </div>
             </div>
         </div>
+
+        <ConfirmModal
+            :show="modalState.show"
+            :title="modalState.title"
+            :message="modalState.message"
+            :confirm-text="modalState.confirmText"
+            :cancel-text="modalState.cancelText"
+            :variant="modalState.variant"
+            :type="modalState.type"
+            @confirm="handleConfirm"
+            @close="handleClose"
+        />
     </AdminLayout>
 </template>

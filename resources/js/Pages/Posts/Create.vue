@@ -6,6 +6,8 @@ import DarkModeToggle from '@/Components/DarkModeToggle.vue';
 import RichEditor from '@/Components/Editor/RichEditor.vue';
 import PostSettingsDrawer from '@/Components/Editor/PostSettingsDrawer.vue';
 import ScheduleModal from '@/Components/Editor/ScheduleModal.vue';
+import ConfirmModal from '@/Components/ConfirmModal.vue';
+import { useConfirmModal } from '@/Composables/useConfirmModal';
 
 const props = defineProps({
     categories: {
@@ -122,14 +124,24 @@ const onBeforeUnload = (event) => {
     }
 };
 
+const { modalState, confirm, alert, handleConfirm, handleClose } = useConfirmModal();
+
 onMounted(() => {
     window.addEventListener('beforeunload', onBeforeUnload);
 
     removeInertiaListener = router.on('before', (event) => {
         if (isDirty.value && !isSubmitting.value) {
-            if (!confirm('You have unsaved changes in your draft. Are you sure you want to leave?')) {
-                event.preventDefault();
-            }
+            event.preventDefault();
+            confirm({
+                title: 'Unsaved Changes',
+                message: 'You have unsaved changes in your draft. Are you sure you want to leave?',
+                confirmText: 'Leave Page',
+                variant: 'warning',
+                onConfirm: () => {
+                    isDirty.value = false;
+                    router.visit(event.detail.visit.url);
+                },
+            });
         }
     });
 
@@ -159,11 +171,19 @@ const submitDraft = () => {
 
 const submitPublish = () => {
     if (!form.title.trim()) {
-        alert('Please enter a title before publishing.');
+        alert({
+            title: 'Title Required',
+            message: 'Please enter a title before publishing your story.',
+            variant: 'warning',
+        });
         return;
     }
     if (wordCount.value < 100) {
-        alert(`At least 100 words are required to publish. (Currently: ${wordCount.value} words)`);
+        alert({
+            title: 'Word Count Minimum',
+            message: `At least 100 words are required to publish. (Currently: ${wordCount.value} words)`,
+            variant: 'warning',
+        });
         return;
     }
 
@@ -180,11 +200,19 @@ const submitPublish = () => {
 
 const openSchedule = () => {
     if (!form.title.trim()) {
-        alert('Please enter a title before scheduling.');
+        alert({
+            title: 'Title Required',
+            message: 'Please enter a title before scheduling your story.',
+            variant: 'warning',
+        });
         return;
     }
     if (wordCount.value < 100) {
-        alert(`At least 100 words are required to schedule. (Currently: ${wordCount.value} words)`);
+        alert({
+            title: 'Word Count Minimum',
+            message: `At least 100 words are required to schedule. (Currently: ${wordCount.value} words)`,
+            variant: 'warning',
+        });
         return;
     }
     isScheduleModalOpen.value = true;
@@ -333,6 +361,18 @@ const onConfirmSchedule = (scheduledDateTime) => {
             :initialDate="form.published_at"
             @close="isScheduleModalOpen = false"
             @confirm="onConfirmSchedule"
+        />
+
+        <ConfirmModal
+            :show="modalState.show"
+            :title="modalState.title"
+            :message="modalState.message"
+            :confirm-text="modalState.confirmText"
+            :cancel-text="modalState.cancelText"
+            :variant="modalState.variant"
+            :type="modalState.type"
+            @confirm="handleConfirm"
+            @close="handleClose"
         />
     </div>
 </template>

@@ -2,6 +2,8 @@
 import { ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import ConfirmModal from '@/Components/ConfirmModal.vue';
+import { useConfirmModal } from '@/Composables/useConfirmModal';
 
 const props = defineProps({
     posts: {
@@ -37,20 +39,34 @@ const resetFilters = () => {
     applyFilters();
 };
 
+const { modalState, confirm, handleConfirm, handleClose } = useConfirmModal();
+
 const toggleFeature = (post) => {
     router.post(route('admin.posts.feature', post.id), {}, { preserveScroll: true });
 };
 
 const unpublishPost = (post) => {
-    if (confirm(`Unpublish "${post.title}"? It will be returned to draft.`)) {
-        router.post(route('admin.posts.unpublish', post.id), {}, { preserveScroll: true });
-    }
+    confirm({
+        title: 'Unpublish Story',
+        message: `Are you sure you want to unpublish "${post.title}"? It will be returned to draft status and removed from public feeds.`,
+        confirmText: 'Unpublish',
+        variant: 'warning',
+        onConfirm: () => {
+            router.post(route('admin.posts.unpublish', post.id), {}, { preserveScroll: true });
+        },
+    });
 };
 
 const deletePost = (post) => {
-    if (confirm(`Move "${post.title}" to trash?`)) {
-        router.delete(route('admin.posts.destroy', post.id), { preserveScroll: true });
-    }
+    confirm({
+        title: 'Move Story to Trash',
+        message: `Move "${post.title}" to trash? You can restore it later from the Trash filter.`,
+        confirmText: 'Move to Trash',
+        variant: 'danger',
+        onConfirm: () => {
+            router.delete(route('admin.posts.destroy', post.id), { preserveScroll: true });
+        },
+    });
 };
 
 const restorePost = (post) => {
@@ -263,5 +279,17 @@ const restorePost = (post) => {
                 </div>
             </div>
         </div>
+
+        <ConfirmModal
+            :show="modalState.show"
+            :title="modalState.title"
+            :message="modalState.message"
+            :confirm-text="modalState.confirmText"
+            :cancel-text="modalState.cancelText"
+            :variant="modalState.variant"
+            :type="modalState.type"
+            @confirm="handleConfirm"
+            @close="handleClose"
+        />
     </AdminLayout>
 </template>

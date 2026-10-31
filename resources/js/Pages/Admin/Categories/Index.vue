@@ -2,6 +2,8 @@
 import { ref, computed } from 'vue';
 import { Head, usePage, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import ConfirmModal from '@/Components/ConfirmModal.vue';
+import { useConfirmModal } from '@/Composables/useConfirmModal';
 
 const props = defineProps({
     categories: {
@@ -73,6 +75,8 @@ const deleteModalOpen = ref(false);
 const categoryToDelete = ref(null);
 const reassignTargetId = ref('');
 
+const { modalState, alert, handleConfirm, handleClose } = useConfirmModal();
+
 const openDeleteModal = (cat) => {
     categoryToDelete.value = cat;
     reassignTargetId.value = '';
@@ -83,7 +87,11 @@ const confirmDelete = () => {
     if (!categoryToDelete.value) return;
 
     if (categoryToDelete.value.posts_count > 0 && !reassignTargetId.value) {
-        alert('You must select a replacement topic to reassign existing stories to.');
+        alert({
+            title: 'Replacement Topic Required',
+            message: 'You must select a replacement topic to reassign existing stories to before deleting.',
+            variant: 'warning',
+        });
         return;
     }
 
@@ -338,5 +346,17 @@ const confirmDelete = () => {
                 </div>
             </div>
         </div>
+
+        <ConfirmModal
+            :show="modalState.show"
+            :title="modalState.title"
+            :message="modalState.message"
+            :confirm-text="modalState.confirmText"
+            :cancel-text="modalState.cancelText"
+            :variant="modalState.variant"
+            :type="modalState.type"
+            @confirm="handleConfirm"
+            @close="handleClose"
+        />
     </AdminLayout>
 </template>

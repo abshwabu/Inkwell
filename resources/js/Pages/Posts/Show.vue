@@ -4,6 +4,8 @@ import { Head, Link, useForm, usePage, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import PostContent from '@/Components/PostContent.vue';
 import ReportModal from '@/Components/ReportModal.vue';
+import ConfirmModal from '@/Components/ConfirmModal.vue';
+import { useConfirmModal } from '@/Composables/useConfirmModal';
 import axios from 'axios';
 
 const props = defineProps({
@@ -342,10 +344,18 @@ const togglePublish = () => {
     });
 };
 
+const { modalState, confirm, alert, handleConfirm, handleClose } = useConfirmModal();
+
 const deletePost = () => {
-    if (confirm('Are you sure you want to delete this story?')) {
-        deleteForm.delete(route('posts.destroy', props.post.slug));
-    }
+    confirm({
+        title: 'Delete Story',
+        message: 'Are you sure you want to delete this story? You can restore it later from your dashboard.',
+        confirmText: 'Delete Story',
+        variant: 'danger',
+        onConfirm: () => {
+            deleteForm.delete(route('posts.destroy', props.post.slug));
+        },
+    });
 };
 
 // Comment submission
@@ -397,7 +407,11 @@ const saveEdit = async (comment) => {
         editBody.value = '';
         router.reload({ only: ['post'] });
     } catch (err) {
-        alert(err.response?.data?.message || 'Failed to update comment. The 15-minute edit window may have expired.');
+        alert({
+            title: 'Edit Failed',
+            message: err.response?.data?.message || 'Failed to update comment. The 15-minute edit window may have expired.',
+            variant: 'warning',
+        });
     } finally {
         isSavingEdit.value = false;
     }
@@ -405,9 +419,16 @@ const saveEdit = async (comment) => {
 
 // Delete comment
 const deleteComment = (comment) => {
-    if (!confirm('Are you sure you want to delete this comment?')) return;
-    router.delete(route('comments.destroy', comment.id), {
-        preserveScroll: true,
+    confirm({
+        title: 'Delete Comment',
+        message: 'Are you sure you want to delete this comment? If it has replies, it will be marked as deleted.',
+        confirmText: 'Delete Comment',
+        variant: 'danger',
+        onConfirm: () => {
+            router.delete(route('comments.destroy', comment.id), {
+                preserveScroll: true,
+            });
+        },
     });
 };
 </script>
@@ -1429,5 +1450,17 @@ const deleteComment = (comment) => {
                 </div>
             </div>
         </div>
+
+        <ConfirmModal
+            :show="modalState.show"
+            :title="modalState.title"
+            :message="modalState.message"
+            :confirm-text="modalState.confirmText"
+            :cancel-text="modalState.cancelText"
+            :variant="modalState.variant"
+            :type="modalState.type"
+            @confirm="handleConfirm"
+            @close="handleClose"
+        />
     </AppLayout>
 </template>

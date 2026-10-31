@@ -2,6 +2,8 @@
 import { ref, computed } from 'vue';
 import { Head, Link, usePage, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import ConfirmModal from '@/Components/ConfirmModal.vue';
+import { useConfirmModal } from '@/Composables/useConfirmModal';
 
 const props = defineProps({
     users: {
@@ -72,6 +74,8 @@ const openBanModal = (user) => {
     banModalOpen.value = true;
 };
 
+const { modalState, confirm, handleConfirm, handleClose } = useConfirmModal();
+
 const submitBan = () => {
     if (!activeUser.value || !banReason.value.trim()) return;
     router.post(route('admin.users.ban', activeUser.value.id), {
@@ -83,9 +87,15 @@ const submitBan = () => {
 };
 
 const unbanUser = (user) => {
-    if (confirm(`Unban ${user.name}?`)) {
-        router.post(route('admin.users.unban', user.id), {}, { preserveScroll: true });
-    }
+    confirm({
+        title: 'Unban User',
+        message: `Are you sure you want to unban ${user.name}? They will be able to log in, write stories, and interact again.`,
+        confirmText: 'Unban User',
+        variant: 'primary',
+        onConfirm: () => {
+            router.post(route('admin.users.unban', user.id), {}, { preserveScroll: true });
+        },
+    });
 };
 </script>
 
@@ -367,5 +377,17 @@ const unbanUser = (user) => {
                 </div>
             </div>
         </div>
+
+        <ConfirmModal
+            :show="modalState.show"
+            :title="modalState.title"
+            :message="modalState.message"
+            :confirm-text="modalState.confirmText"
+            :cancel-text="modalState.cancelText"
+            :variant="modalState.variant"
+            :type="modalState.type"
+            @confirm="handleConfirm"
+            @close="handleClose"
+        />
     </AdminLayout>
 </template>

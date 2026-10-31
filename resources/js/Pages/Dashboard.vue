@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import ConfirmModal from '@/Components/ConfirmModal.vue';
+import { useConfirmModal } from '@/Composables/useConfirmModal';
 import axios from 'axios';
 
 const props = defineProps({
@@ -85,11 +87,34 @@ watch(search, () => {
     }, 350);
 });
 
+const { modalState, confirm, alert, handleConfirm, handleClose } = useConfirmModal();
+
 // Bulk action execution
 const executeBulkAction = (action) => {
     if (selectedIds.value.length === 0) return;
 
-    if (action === 'delete' && !confirm(`Are you sure you want to delete ${selectedIds.value.length} selected story(ies)?`)) {
+    if (action === 'delete') {
+        confirm({
+            title: 'Delete Selected Stories',
+            message: `Are you sure you want to delete ${selectedIds.value.length} selected story(ies)? They will be moved to trash.`,
+            confirmText: 'Delete Stories',
+            variant: 'danger',
+            onConfirm: () => {
+                router.post(
+                    route('dashboard.bulk-action'),
+                    {
+                        ids: selectedIds.value,
+                        action,
+                    },
+                    {
+                        preserveScroll: true,
+                        onSuccess: () => {
+                            selectedIds.value = [];
+                        },
+                    }
+                );
+            },
+        });
         return;
     }
 
@@ -184,21 +209,33 @@ const changeSeriesStatus = async (s, newStatus) => {
         });
         s.status = newStatus;
     } catch (err) {
-        alert('Failed to update status.');
+        alert({
+            title: 'Error',
+            message: 'Failed to update series status.',
+            variant: 'warning',
+        });
     }
 };
 
-const deleteSeries = async (s) => {
-    if (!confirm(`Are you sure you want to delete "${s.title}"? Stories in this series will NOT be deleted; they will be detached as standalone posts.`)) {
-        return;
-    }
-
-    try {
-        await axios.delete(route('series.destroy', s.id));
-        router.reload({ only: ['seriesList', 'counts'] });
-    } catch (err) {
-        alert('Failed to delete series.');
-    }
+const deleteSeries = (s) => {
+    confirm({
+        title: 'Delete Story Series',
+        message: `Are you sure you want to delete "${s.title}"?\n\nStories in this series will NOT be deleted; they will be detached as standalone posts.`,
+        confirmText: 'Delete Series',
+        variant: 'danger',
+        onConfirm: async () => {
+            try {
+                await axios.delete(route('series.destroy', s.id));
+                router.reload({ only: ['seriesList', 'counts'] });
+            } catch (err) {
+                alert({
+                    title: 'Error',
+                    message: 'Failed to delete series.',
+                    variant: 'warning',
+                });
+            }
+        },
+    });
 };
 
 // Reordering parts
@@ -247,7 +284,11 @@ const savePartsOrder = async (series) => {
             p.series_order = idx + 1;
         });
     } catch (err) {
-        alert('Failed to reorder parts.');
+        alert({
+            title: 'Error',
+            message: 'Failed to reorder parts. Please try again.',
+            variant: 'warning',
+        });
         router.reload({ only: ['seriesList'] });
     } finally {
         isReordering.value = false;
@@ -949,5 +990,17 @@ const savePartsOrder = async (series) => {
                 </div>
             </div>
         </div>
+
+        <ConfirmModal
+            :show="modalState.show"
+            :title="modalState.title"
+            :message="modalState.message"
+            :confirm-text="modalState.confirmText"
+            :cancel-text="modalState.cancelText"
+            :variant="modalState.variant"
+            :type="modalState.type"
+            @confirm="handleConfirm"
+            @close="handleClose"
+        />
     </AppLayout>
 </template>

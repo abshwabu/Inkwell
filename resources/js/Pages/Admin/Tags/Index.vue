@@ -2,6 +2,8 @@
 import { ref, computed } from 'vue';
 import { Head, Link, usePage, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import ConfirmModal from '@/Components/ConfirmModal.vue';
+import { useConfirmModal } from '@/Composables/useConfirmModal';
 
 const props = defineProps({
     tags: {
@@ -76,10 +78,18 @@ const confirmMerge = () => {
     });
 };
 
+const { modalState, confirm, handleConfirm, handleClose } = useConfirmModal();
+
 const deleteTag = (tag) => {
-    if (confirm(`Delete tag "#${tag.name}"? It will be removed from all stories.`)) {
-        router.delete(route('admin.tags.destroy', tag.id), { preserveScroll: true });
-    }
+    confirm({
+        title: 'Delete Tag',
+        message: `Are you sure you want to delete tag "#${tag.name}"? It will be removed from all associated stories.`,
+        confirmText: 'Delete Tag',
+        variant: 'danger',
+        onConfirm: () => {
+            router.delete(route('admin.tags.destroy', tag.id), { preserveScroll: true });
+        },
+    });
 };
 </script>
 
@@ -306,5 +316,17 @@ const deleteTag = (tag) => {
                 </div>
             </div>
         </div>
+
+        <ConfirmModal
+            :show="modalState.show"
+            :title="modalState.title"
+            :message="modalState.message"
+            :confirm-text="modalState.confirmText"
+            :cancel-text="modalState.cancelText"
+            :variant="modalState.variant"
+            :type="modalState.type"
+            @confirm="handleConfirm"
+            @close="handleClose"
+        />
     </AdminLayout>
 </template>
