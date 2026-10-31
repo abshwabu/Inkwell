@@ -540,24 +540,43 @@ class FeedService
     /**
      * Get hero/featured post for front page (admin-set is_featured or top trending).
      */
-    public function getHeroPost(): ?Post
+    public function getHeroPost(?User $user = null, ?array $guestPreferences = null): ?Post
     {
-        $featured = Post::published()
+        $dismissedPostIds = $this->getDismissedPostIds($user, $guestPreferences);
+
+        $featuredQuery = Post::published()
             ->featured()
-            ->withRelations()
-            ->latest('published_at')
-            ->first();
+            ->withRelations();
+
+        if ($user) {
+            $featuredQuery->where('posts.user_id', '!=', $user->id);
+        }
+
+        if (! empty($dismissedPostIds)) {
+            $featuredQuery->whereNotIn('posts.id', $dismissedPostIds);
+        }
+
+        $featured = $featuredQuery->latest('published_at')->first();
 
         if ($featured) {
             return $featured;
         }
 
         // Fallback: top story in last 14 days
-        return Post::published()
+        $fallbackQuery = Post::published()
             ->withRelations()
             ->where('published_at', '>=', now()->subDays(14))
-            ->popular()
-            ->first();
+            ->popular();
+
+        if ($user) {
+            $fallbackQuery->where('posts.user_id', '!=', $user->id);
+        }
+
+        if (! empty($dismissedPostIds)) {
+            $fallbackQuery->whereNotIn('posts.id', $dismissedPostIds);
+        }
+
+        return $fallbackQuery->first();
     }
 
     /**
@@ -616,10 +635,10 @@ class FeedService
     /**
      * Helper to get dismissed post IDs.
      */
-    protected function getDismissedPostIds(?User $user, ?array $guestPreferences): array
+    public function getDismissedPostIds(?User $user = null, ?array $guestPreferences = null): array
     {
         if ($user) {
-            return $user->dismissedPosts()->pluck('post_id')->toArray();
+            return $user->dismissedPosts()->pluck('post_id')->map(fn ($id) => (int) $id)->toArray();
         }
 
         return ! empty($guestPreferences['dismissed']) ? array_map('intval', $guestPreferences['dismissed']) : [];
@@ -658,6 +677,8 @@ class FeedService
     public function invalidateUserFeedCache(int|User $user): void
     {
         $userId = is_numeric($user) ? (int) $user : $user->id;
-        Cache::increment("feed_version_{$userId}");
+        $key = "feed_version_{$userId}";
+        $current = (int) Cache::get($key, 1);
+        Cache::forever($key, $current + 1);
     }
 }

@@ -255,6 +255,45 @@ class PersonalizedFrontPageTest extends TestCase
     }
 
     /**
+     * Test that dismissed post stays hidden after page refresh and cache invalidation.
+     */
+    public function test_not_interested_persists_across_page_refresh_and_feed_cache(): void
+    {
+        $post = Post::factory()->create([
+            'user_id' => $this->authorA->id,
+            'category_id' => $this->categoryTech->id,
+            'status' => PostStatus::PUBLISHED,
+            'is_featured' => true,
+            'published_at' => now()->subHour(),
+        ]);
+
+        // 1. First visit caches the feed and sets hero post
+        $initialResponse = $this->actingAs($this->user)->get('/');
+        $initialResponse->assertOk();
+        $initialResponse->assertInertia(fn ($page) => $page
+            ->component('Welcome')
+            ->where('heroPost.id', $post->id)
+        );
+
+        // 2. User dismisses the post
+        $dismiss = $this->actingAs($this->user)->post(route('posts.dismiss', $post->id));
+        $dismiss->assertRedirect();
+
+        // 3. User refreshes the home page
+        $refreshedResponse = $this->actingAs($this->user)->get('/');
+        $refreshedResponse->assertOk();
+        $refreshedResponse->assertInertia(fn ($page) => $page
+            ->component('Welcome')
+            ->where('heroPost', fn ($hero) => is_null($hero) || ($hero['id'] ?? null) !== $post->id)
+            ->where('dismissedPostIds', fn ($ids) => collect($ids)->contains($post->id))
+        );
+
+        // Feed must not contain the dismissed post
+        $cachedFeed = $this->feedService->getFeed($this->user, 'for-you');
+        $this->assertFalse($cachedFeed->contains('id', $post->id));
+    }
+
+    /**
      * Test cold-start fallback when user has no signals.
      */
     public function test_cold_start_fallback_uses_trending_posts(): void

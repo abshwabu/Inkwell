@@ -49,7 +49,7 @@ class FeedController extends Controller
         $guestPrefs = [];
         $guestPrefsCookie = $request->cookie('inkwell_guest_prefs');
         if (! $user && $guestPrefsCookie) {
-            $decoded = json_decode($guestPrefsCookie, true);
+            $decoded = is_array($guestPrefsCookie) ? $guestPrefsCookie : json_decode($guestPrefsCookie, true);
             if (is_array($decoded)) {
                 $guestPrefs = $decoded;
             }
@@ -74,12 +74,13 @@ class FeedController extends Controller
         $perPage = 10;
 
         $posts = $this->feedService->getFeed($user, $tab, $page, $perPage, $guestPrefs, $selectedCategorySlug);
-        $heroPost = $this->feedService->getHeroPost();
+        $heroPost = $this->feedService->getHeroPost($user, $guestPrefs);
         $sidebarData = $this->feedService->getSidebarData($user);
 
         $categories = Category::orderBy('name')->get(['id', 'name', 'slug', 'color']);
         $popularTags = Tag::withCount('posts')->orderByDesc('posts_count')->take(12)->get(['id', 'name', 'slug']);
         $followingUserIds = $user ? $user->following()->pluck('followed_id')->all() : [];
+        $dismissedPostIds = $this->feedService->getDismissedPostIds($user, $guestPrefs);
 
         return Inertia::render('Welcome', [
             'canLogin' => \Illuminate\Support\Facades\Route::has('login'),
@@ -93,6 +94,7 @@ class FeedController extends Controller
             'guestPreferences' => $guestPrefs,
             'selectedCategory' => $selectedCategorySlug,
             'followingUserIds' => $followingUserIds,
+            'dismissedPostIds' => $dismissedPostIds,
             'continueReading' => $user ? $this->seriesService->getContinueReadingList($user) : [],
             'seo' => $this->seoService->forHome(),
         ]);
@@ -108,7 +110,7 @@ class FeedController extends Controller
         if ($user) {
             $this->feedService->recordDismissal($user, $post);
 
-            if ($request->wantsJson()) {
+            if ($request->wantsJson() && ! $request->header('X-Inertia')) {
                 return response()->json([
                     'success' => true,
                     'message' => 'Story hidden. We will show less content like this.',
@@ -122,20 +124,20 @@ class FeedController extends Controller
         $guestPrefs = [];
         $guestPrefsCookie = $request->cookie('inkwell_guest_prefs');
         if ($guestPrefsCookie) {
-            $decoded = json_decode($guestPrefsCookie, true);
+            $decoded = is_array($guestPrefsCookie) ? $guestPrefsCookie : json_decode($guestPrefsCookie, true);
             if (is_array($decoded)) {
                 $guestPrefs = $decoded;
             }
         }
 
-        $guestPrefs['dismissed'] = array_unique(array_merge($guestPrefs['dismissed'] ?? [], [$post->id]));
+        $guestPrefs['dismissed'] = array_values(array_unique(array_merge($guestPrefs['dismissed'] ?? [], [(int) $post->id])));
         if ($post->category_id) {
-            $guestPrefs['dismissed_categories'] = array_unique(array_merge($guestPrefs['dismissed_categories'] ?? [], [$post->category_id]));
+            $guestPrefs['dismissed_categories'] = array_values(array_unique(array_merge($guestPrefs['dismissed_categories'] ?? [], [(int) $post->category_id])));
         }
 
         $cookie = cookie('inkwell_guest_prefs', json_encode($guestPrefs), 60 * 24 * 30);
 
-        if ($request->wantsJson()) {
+        if ($request->wantsJson() && ! $request->header('X-Inertia')) {
             return response()->json([
                 'success' => true,
                 'message' => 'Story hidden.',
@@ -155,7 +157,7 @@ class FeedController extends Controller
         if ($user) {
             $this->feedService->undoDismissal($user, $post);
 
-            if ($request->wantsJson()) {
+            if ($request->wantsJson() && ! $request->header('X-Inertia')) {
                 return response()->json(['success' => true, 'message' => 'Restored story.']);
             }
 
@@ -166,16 +168,16 @@ class FeedController extends Controller
         $guestPrefs = [];
         $guestPrefsCookie = $request->cookie('inkwell_guest_prefs');
         if ($guestPrefsCookie) {
-            $decoded = json_decode($guestPrefsCookie, true);
+            $decoded = is_array($guestPrefsCookie) ? $guestPrefsCookie : json_decode($guestPrefsCookie, true);
             if (is_array($decoded)) {
                 $guestPrefs = $decoded;
             }
         }
 
-        $guestPrefs['dismissed'] = array_values(array_diff($guestPrefs['dismissed'] ?? [], [$post->id]));
+        $guestPrefs['dismissed'] = array_values(array_diff($guestPrefs['dismissed'] ?? [], [(int) $post->id]));
         $cookie = cookie('inkwell_guest_prefs', json_encode($guestPrefs), 60 * 24 * 30);
 
-        if ($request->wantsJson()) {
+        if ($request->wantsJson() && ! $request->header('X-Inertia')) {
             return response()->json(['success' => true])->withCookie($cookie);
         }
 

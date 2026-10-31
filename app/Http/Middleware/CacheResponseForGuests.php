@@ -41,8 +41,10 @@ class CacheResponseForGuests
             return $next($request);
         }
 
+        $guestCookie = $request->cookie('inkwell_guest_prefs');
+        $cookieSuffix = $guestCookie ? '_' . md5(is_array($guestCookie) ? json_encode($guestCookie) : (string) $guestCookie) : '';
         $isInertia = $request->header('X-Inertia') ? 'inertia' : 'html';
-        $cacheKey = 'guest_page_cache_' . $isInertia . '_' . md5($request->fullUrl());
+        $cacheKey = 'guest_page_cache_' . $isInertia . '_' . md5($request->fullUrl()) . $cookieSuffix;
 
         // Check cache
         if (Cache::has($cacheKey)) {

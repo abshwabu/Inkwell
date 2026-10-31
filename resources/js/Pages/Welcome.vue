@@ -41,6 +41,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    dismissedPostIds: {
+        type: Array,
+        default: () => [],
+    },
     continueReading: {
         type: Array,
         default: () => [],
@@ -50,8 +54,14 @@ const props = defineProps({
 const page = usePage();
 const currentUser = computed(() => page.props.auth?.user);
 
-const dismissedPostIds = ref(new Set());
+const dismissedPostIds = ref(new Set(props.dismissedPostIds || []));
 const undoToastPost = ref(null);
+
+watch(() => props.dismissedPostIds, (newIds) => {
+    if (newIds) {
+        dismissedPostIds.value = new Set(newIds);
+    }
+});
 
 // Following tracking state
 const followingUserIds = ref(new Set(props.followingUserIds || []));
@@ -245,32 +255,45 @@ const toggleFollow = async (target) => {
         <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
             <!-- Hero Featured Post / Editor's Pick Section -->
             <section
-                v-if="heroPost && !selectedCategory && tab === (currentUser ? 'for-you' : 'trending')"
+                v-if="heroPost && !dismissedPostIds.has(heroPost.id) && !selectedCategory && tab === (currentUser ? 'for-you' : 'trending')"
                 class="mb-12 overflow-hidden rounded-3xl border border-gray-200/90 bg-gradient-to-br from-indigo-50/60 via-white to-gray-50/40 p-6 shadow-sm dark:border-gray-800 dark:from-indigo-950/20 dark:via-gray-900 dark:to-gray-950 lg:p-8"
             >
                 <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
                     <div class="lg:col-span-7">
-                        <div class="flex items-center gap-2">
-                            <span
-                                v-if="heroPost.is_featured"
-                                class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:bg-amber-950/80 dark:text-amber-300"
-                            >
-                                ★ Editor’s Pick
-                            </span>
-                            <span
-                                v-else
-                                class="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300"
-                            >
-                                Featured Story
-                            </span>
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span
+                                    v-if="heroPost.is_featured"
+                                    class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:bg-amber-950/80 dark:text-amber-300"
+                                >
+                                    ★ Editor’s Pick
+                                </span>
+                                <span
+                                    v-else
+                                    class="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300"
+                                >
+                                    Featured Story
+                                </span>
 
-                            <Link
-                                v-if="heroPost.category"
-                                :href="route('categories.show', heroPost.category.slug)"
-                                class="text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-indigo-600"
+                                <Link
+                                    v-if="heroPost.category"
+                                    :href="route('categories.show', heroPost.category.slug)"
+                                    class="text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-indigo-600"
+                                >
+                                    in {{ heroPost.category.name }}
+                                </Link>
+                            </div>
+
+                            <!-- Not Interested Action on Hero Card -->
+                            <button
+                                type="button"
+                                @click="dismissPost(heroPost)"
+                                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs flex items-center gap-1 transition"
+                                title="Not interested in this story"
                             >
-                                in {{ heroPost.category.name }}
-                            </Link>
+                                <span>✕</span>
+                                <span class="hidden sm:inline">Not interested</span>
+                            </button>
                         </div>
 
                         <h2 class="mt-4 font-serif text-2xl sm:text-4xl font-bold tracking-tight text-gray-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400 transition leading-tight">
