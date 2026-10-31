@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -10,6 +11,10 @@ use Inertia\Response;
 
 class AuthorController extends Controller
 {
+    public function __construct(
+        protected SeoService $seoService
+    ) {}
+
     /**
      * Display the public author profile page.
      */
@@ -50,6 +55,7 @@ class AuthorController extends Controller
             'posts' => $posts,
             'isFollowing' => $isFollowing,
             'isSelf' => Auth::id() === $author->id,
+            'seo' => $this->seoService->forAuthor($author),
         ]);
     }
 }

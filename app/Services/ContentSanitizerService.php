@@ -327,6 +327,8 @@ class ContentSanitizerService
         }
 
         $node->setAttribute('src', $cleanSrc);
+        $node->setAttribute('loading', 'lazy');
+        $node->setAttribute('decoding', 'async');
     }
 
     /**
@@ -349,11 +351,6 @@ class ContentSanitizerService
      */
     protected function sanitizeStyle(string $style): ?string
     {
-        // Disallow dangerous CSS functions and bindings
-        if (preg_match('/(expression|behavior|url|javascript|binding|-moz-binding)/i', $style)) {
-            return null;
-        }
-
         $allowedProperties = [
             'text-align', 'color', 'background-color', 'width', 'max-width', 'height',
             'float', 'margin', 'margin-left', 'margin-right', 'margin-top', 'margin-bottom',
@@ -366,6 +363,11 @@ class ContentSanitizerService
         foreach ($declarations as $decl) {
             $decl = trim($decl);
             if (empty($decl)) {
+                continue;
+            }
+
+            // Disallow dangerous CSS functions and bindings per-declaration
+            if (preg_match('/(expression|behavior|url|javascript|binding|-moz-binding)/i', $decl)) {
                 continue;
             }
 

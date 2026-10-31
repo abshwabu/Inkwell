@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Category;
 use App\Models\Post;
 use App\Models\Tag;
+use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -12,6 +13,10 @@ use Inertia\Response;
 
 class SearchController extends Controller
 {
+    public function __construct(
+        protected SeoService $seoService
+    ) {}
+
     /**
      * Search published stories publicly using SQLite FTS5 table with bm25 ranking and snippets.
      */
@@ -78,6 +83,7 @@ class SearchController extends Controller
             'posts' => $posts,
             'categories' => Category::orderBy('name')->get(['id', 'name', 'slug']),
             'tags' => Tag::orderBy('name')->get(['id', 'name', 'slug']),
+            'seo' => $this->seoService->forPage($rawQuery ? "Search: {$rawQuery}" : 'Search Stories'),
         ]);
     }
 

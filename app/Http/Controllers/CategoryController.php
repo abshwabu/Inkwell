@@ -3,11 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\Category;
+use App\Services\SeoService;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class CategoryController extends Controller
 {
+    public function __construct(
+        protected SeoService $seoService
+    ) {}
+
     /**
      * Display a public category and its published posts.
      */
@@ -23,6 +28,7 @@ class CategoryController extends Controller
         return Inertia::render('Categories/Show', [
             'category' => $category,
             'posts' => $posts,
+            'seo' => $this->seoService->forCategory($category),
         ]);
     }
 }

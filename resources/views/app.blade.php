@@ -6,6 +6,48 @@
 
         <title inertia>{{ config('app.name', 'Inkwell') }}</title>
 
+        @php
+            $seo = $page['props']['seo'] ?? null;
+            $siteName = config('app.name', 'Inkwell');
+            $metaTitle = $seo['title'] ?? ($siteName . ' — Where ideas take root');
+            $metaDesc = $seo['description'] ?? 'Inkwell is an open blogging platform where thoughtful writing finds its audience.';
+            $canonicalUrl = $seo['canonical'] ?? url()->current();
+            $metaImage = $seo['image'] ?? asset('images/og-default.png');
+            $ogType = $seo['type'] ?? 'website';
+        @endphp
+
+        <!-- SEO Meta Tags -->
+        <meta name="description" content="{{ $metaDesc }}">
+        <link rel="canonical" href="{{ $canonicalUrl }}">
+        <link rel="alternate" type="application/rss+xml" title="{{ $siteName }} RSS Feed" href="{{ url('/feed') }}">
+
+        <!-- Open Graph / Facebook -->
+        <meta property="og:site_name" content="{{ $seo['site_name'] ?? $siteName }}">
+        <meta property="og:type" content="{{ $ogType }}">
+        <meta property="og:title" content="{{ $metaTitle }}">
+        <meta property="og:description" content="{{ $metaDesc }}">
+        <meta property="og:url" content="{{ $canonicalUrl }}">
+        <meta property="og:image" content="{{ $metaImage }}">
+        @if (!empty($seo['published_time']))
+            <meta property="article:published_time" content="{{ $seo['published_time'] }}">
+        @endif
+        @if (!empty($seo['author_name']))
+            <meta property="article:author" content="{{ $seo['author_name'] }}">
+        @endif
+
+        <!-- Twitter Card -->
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:title" content="{{ $metaTitle }}">
+        <meta name="twitter:description" content="{{ $metaDesc }}">
+        <meta name="twitter:image" content="{{ $metaImage }}">
+
+        <!-- Structured Data JSON-LD -->
+        @if (!empty($seo['json_ld']))
+            <script type="application/ld+json">
+                {!! json_encode($seo['json_ld'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}
+            </script>
+        @endif
+
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700&display=swap" rel="stylesheet" />

@@ -315,7 +315,7 @@ const toggleFollow = (username) => {
                                             <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                                                 <div class="flex items-center gap-2">
                                                     <Link :href="route('author.show', post.user.username)" class="flex items-center gap-1.5 font-semibold text-gray-800 dark:text-gray-200 hover:text-indigo-600">
-                                                        <img :src="post.user.avatar_url" :alt="post.user.name" class="h-5 w-5 rounded-full object-cover" />
+                                                        <img :src="post.user.avatar_url" :alt="post.user.name" loading="lazy" decoding="async" width="20" height="20" class="h-5 w-5 rounded-full object-cover" />
                                                         <span>{{ post.user.name }}</span>
                                                     </Link>
                                                     <span v-if="post.category">•</span>
@@ -393,7 +393,7 @@ const toggleFollow = (username) => {
                                     <!-- Cover thumbnail -->
                                     <div v-if="post.cover_image_path" class="w-full sm:w-44 h-36 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800">
                                         <Link :href="route('posts.show.canonical', { category_slug: post.category ? post.category.slug : 'story', post_slug: post.slug })">
-                                            <img :src="post.cover_image_path" :alt="post.title" class="h-full w-full object-cover hover:scale-105 transition duration-300" />
+                                            <img :src="post.cover_image_path" :alt="post.title" loading="lazy" decoding="async" width="176" height="144" class="h-full w-full object-cover hover:scale-105 transition duration-300" />
                                         </Link>
                                     </div>
                                 </div>

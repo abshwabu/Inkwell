@@ -12,6 +12,7 @@ use App\Models\PostView;
 use App\Models\Tag;
 use App\Services\BotDetectorService;
 use App\Services\ContentSanitizerService;
+use App\Services\SeoService;
 use App\Services\SpamProtectionService;
 use App\Services\TableOfContentsService;
 use Carbon\Carbon;
@@ -30,7 +31,8 @@ class PostController extends Controller
         protected ContentSanitizerService $sanitizer,
         protected BotDetectorService $botDetector,
         protected TableOfContentsService $tocService,
-        protected SpamProtectionService $spamProtectionService
+        protected SpamProtectionService $spamProtectionService,
+        protected SeoService $seoService
     ) {}
 
     /**
@@ -201,6 +203,7 @@ class PostController extends Controller
             'canEdit' => Auth::check() && Auth::user()->can('update', $post),
             'canDelete' => Auth::check() && Auth::user()->can('delete', $post),
             'canPublish' => Auth::check() && Auth::user()->can('publish', $post),
+            'seo' => $this->seoService->forPost($post),
         ]);
     }
 

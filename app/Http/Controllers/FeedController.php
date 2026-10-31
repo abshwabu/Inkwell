@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Post;
 use App\Models\Tag;
 use App\Services\FeedService;
+use App\Services\SeoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,7 +19,8 @@ use Inertia\Response;
 class FeedController extends Controller
 {
     public function __construct(
-        protected FeedService $feedService
+        protected FeedService $feedService,
+        protected SeoService $seoService
     ) {}
 
     /**
@@ -81,6 +83,7 @@ class FeedController extends Controller
             'popularTags' => $popularTags,
             'guestPreferences' => $guestPrefs,
             'selectedCategory' => $selectedCategorySlug,
+            'seo' => $this->seoService->forHome(),
         ]);
     }
 

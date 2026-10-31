@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Post;
+use App\Services\SeoService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -10,6 +11,10 @@ use Inertia\Response;
 
 class ArchiveController extends Controller
 {
+    public function __construct(
+        protected SeoService $seoService
+    ) {}
+
     /**
      * Display the archive index grouped by year and month.
      */
@@ -49,6 +54,7 @@ class ArchiveController extends Controller
             'archiveYears' => $byYear,
             'recentStories' => $recentStories,
             'totalPublished' => Post::published()->count(),
+            'seo' => $this->seoService->forPage('Archives', 'Browse published articles by year and month on Inkwell.'),
         ]);
     }
 
@@ -81,11 +87,14 @@ class ArchiveController extends Controller
 
         $posts = $postsQuery->latest('published_at')->paginate(12)->withQueryString();
 
+        $archiveTitle = $monthName ? "Archive: {$monthName} {$year}" : "Archive: {$year}";
+
         return Inertia::render('Archive/Show', [
             'year' => $year,
             'month' => $monthInt,
             'month_name' => $monthName,
             'posts' => $posts,
+            'seo' => $this->seoService->forPage($archiveTitle, "Browse stories published in {$archiveTitle} on Inkwell."),
         ]);
     }
 }

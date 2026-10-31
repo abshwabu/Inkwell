@@ -24,3 +24,5 @@ Homestead.yaml
 Thumbs.db
 CLAUDE.md
 claude.md
+/test-results
+/playwright-report

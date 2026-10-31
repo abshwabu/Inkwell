@@ -391,6 +391,10 @@ const deleteComment = (comment) => {
                                     <img
                                         :src="post.user.avatar_url"
                                         :alt="post.user.name"
+                                        loading="lazy"
+                                        decoding="async"
+                                        width="44"
+                                        height="44"
                                         class="h-11 w-11 rounded-full object-cover border border-gray-200 dark:border-gray-700"
                                     />
                                 </Link>
@@ -515,6 +519,10 @@ const deleteComment = (comment) => {
                             <img
                                 :src="post.cover_image_path"
                                 :alt="post.title"
+                                loading="lazy"
+                                decoding="async"
+                                width="1200"
+                                height="630"
                                 class="w-full max-h-[500px] object-cover"
                             />
                         </div>

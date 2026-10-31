@@ -16,6 +16,7 @@ use App\Http\Controllers\CommentController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeedController;
 use App\Http\Controllers\FollowController;
+use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\ImageUploadController;
 use App\Http\Controllers\LikeController;
 use App\Http\Controllers\NotificationController;
@@ -23,7 +24,9 @@ use App\Http\Controllers\PostController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\RssFeedController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\TagController;
 use App\Models\Category;
 use App\Models\Post;
@@ -33,26 +36,45 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+// System Health Check (SQLite WAL, Pragmas, Storage, Cache)
+Route::get('/health', [HealthCheckController::class, 'index'])->name('health');
+
+// XML Sitemap & Robots.txt
+Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
+Route::get('/robots.txt', function () {
+    $path = public_path('robots.txt');
+    $content = file_exists($path) ? file_get_contents($path) : "User-agent: *\nAllow: /\nSitemap: /sitemap.xml\n";
+    return response($content, 200, ['Content-Type' => 'text/plain']);
+});
+
+// RSS Feeds (Main, Category, Author)
+Route::get('/feed', [RssFeedController::class, 'index'])->name('feed');
+Route::get('/feed/category/{category:slug}', [RssFeedController::class, 'category'])->name('feed.category');
+Route::get('/feed/author/{username}', [RssFeedController::class, 'author'])->name('feed.author');
+Route::get('/@{username}/feed', [RssFeedController::class, 'author']);
+Route::get('/category/{category:slug}/feed', [RssFeedController::class, 'category']);
+
 // Public Front Page Feed & Search
-Route::get('/', [FeedController::class, 'index'])->name('home');
-Route::get('/search', [SearchController::class, 'index'])->name('search');
+Route::get('/', [FeedController::class, 'index'])->middleware('guest.cache')->name('home');
+Route::get('/search', [SearchController::class, 'index'])->middleware('guest.cache')->name('search');
 
 // "Not interested" dismissal & undismissal (works for guests with cookie, and logged-in users)
 Route::post('/posts/{post}/dismiss', [FeedController::class, 'dismiss'])->name('posts.dismiss');
 Route::post('/posts/{post}/undismiss', [FeedController::class, 'undoDismiss'])->name('posts.undismiss');
 
 // Category routes (/category/{slug} and alias /categories/{slug})
-Route::get('/category/{category:slug}', [CategoryController::class, 'show'])->name('categories.show');
-Route::get('/categories/{category:slug}', [CategoryController::class, 'show']);
+Route::get('/category/{category:slug}', [CategoryController::class, 'show'])->middleware('guest.cache')->name('categories.show');
+Route::get('/categories/{category:slug}', [CategoryController::class, 'show'])->middleware('guest.cache');
 
 // Tag routes (/tag/{slug} and alias /tags/{slug})
-Route::get('/tag/{tag:slug}', [TagController::class, 'show'])->name('tags.show');
-Route::get('/tags/{tag:slug}', [TagController::class, 'show']);
+Route::get('/tag/{tag:slug}', [TagController::class, 'show'])->middleware('guest.cache')->name('tags.show');
+Route::get('/tags/{tag:slug}', [TagController::class, 'show'])->middleware('guest.cache');
 
 // Archives (/archive and /archive/{year}/{month?})
-Route::get('/archive', [ArchiveController::class, 'index'])->name('archive.index');
+Route::get('/archive', [ArchiveController::class, 'index'])->middleware('guest.cache')->name('archive.index');
 Route::get('/archive/{year}/{month?}', [ArchiveController::class, 'show'])
     ->where(['year' => '[0-9]{4}', 'month' => '[0-9]{1,2}'])
+    ->middleware('guest.cache')
     ->name('archive.show');
 
 // Short post route /p/{slug} and legacy /posts/{post:slug} - 301 redirect to canonical
@@ -64,10 +86,11 @@ Route::get('/posts/{post:slug}', [PostController::class, 'show'])->name('posts.s
 
 Route::get('/@{username}', [AuthorController::class, 'show'])
     ->where('username', '[a-zA-Z0-9_\-]+')
+    ->middleware('guest.cache')
     ->name('author.show');
 
 // Authenticated & Not Banned Routes (Writing, Commenting, Liking, Bookmarking, Following, Admin Feature)
-Route::middleware(['auth', 'not.banned'])->group(function () {
+Route::middleware(['auth', 'not.banned', 'throttle:write'])->group(function () {
     Route::get('/write', [PostController::class, 'create'])->name('posts.create');
     Route::post('/posts', [PostController::class, 'store'])->name('posts.store');
     Route::post('/posts/autosave', [PostController::class, 'autosave'])->name('posts.autosave');
@@ -122,7 +145,7 @@ Route::middleware('auth')->group(function () {
 });
 
 // Admin & Moderation Routes (Moderators & Admins)
-Route::middleware(['auth', 'not.banned', 'role:admin,moderator'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'not.banned', 'role:admin,moderator', 'throttle:write'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', [AdminDashboardController::class, 'index'])->name('dashboard');
 
     // Posts Moderation
@@ -157,7 +180,7 @@ Route::middleware(['auth', 'not.banned', 'role:admin,moderator'])->prefix('admin
 });
 
 // Admin-Only Routes (Admins Only)
-Route::middleware(['auth', 'not.banned', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'not.banned', 'role:admin', 'throttle:write'])->prefix('admin')->name('admin.')->group(function () {
     // User Role Changes
     Route::post('/users/{user}/role', [AdminUserController::class, 'updateRole'])->name('users.role');
 
@@ -182,4 +205,5 @@ require __DIR__.'/auth.php';
 // Canonical post route /{category_slug}/{post_slug} (Must be at the end to prevent collisions)
 Route::get('/{category_slug}/{post_slug}', [PostController::class, 'showCanonical'])
     ->where(['category_slug' => '[a-zA-Z0-9_\-]+', 'post_slug' => '[a-zA-Z0-9_\-]+'])
+    ->middleware('guest.cache')
     ->name('posts.show.canonical');

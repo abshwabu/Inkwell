@@ -1,0 +1,4 @@
+# Crontab configuration for Inkwell Production Server
+# Add this entry to the www-data or deploy user's crontab using `crontab -e`:
+
+* * * * * cd /var/www/inkwell && php artisan schedule:run >> /dev/null 2>&1

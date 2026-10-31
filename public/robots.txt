@@ -1,2 +1,15 @@
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /write
+Disallow: /write/*
+Disallow: /dashboard
+Disallow: /dashboard/*
+Disallow: /settings
+Disallow: /settings/*
+Disallow: /bookmarks
+Disallow: /following
+Disallow: /onboarding
+
+Sitemap: /sitemap.xml
