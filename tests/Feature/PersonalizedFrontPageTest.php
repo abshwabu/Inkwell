@@ -381,4 +381,21 @@ class PersonalizedFrontPageTest extends TestCase
                 ->where('posts.data.0.id', $lifePost->id)
             );
     }
+
+    /**
+     * Test front page provides following user IDs and sidebar writer is_following flags.
+     */
+    public function test_front_page_following_integration(): void
+    {
+        $this->user->following()->sync([$this->authorA->id]);
+
+        $response = $this->actingAs($this->user)->get('/');
+        $response->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Welcome')
+                ->has('followingUserIds')
+                ->where('followingUserIds', [$this->authorA->id])
+                ->has('sidebarData.top_writers')
+            );
+    }
 }

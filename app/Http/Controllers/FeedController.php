@@ -77,6 +77,7 @@ class FeedController extends Controller
 
         $categories = Category::orderBy('name')->get(['id', 'name', 'slug', 'color']);
         $popularTags = Tag::withCount('posts')->orderByDesc('posts_count')->take(12)->get(['id', 'name', 'slug']);
+        $followingUserIds = $user ? $user->following()->pluck('followed_id')->all() : [];
 
         return Inertia::render('Welcome', [
             'canLogin' => \Illuminate\Support\Facades\Route::has('login'),
@@ -89,6 +90,7 @@ class FeedController extends Controller
             'popularTags' => $popularTags,
             'guestPreferences' => $guestPrefs,
             'selectedCategory' => $selectedCategorySlug,
+            'followingUserIds' => $followingUserIds,
             'seo' => $this->seoService->forHome(),
         ]);
     }

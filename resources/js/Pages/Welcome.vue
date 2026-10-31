@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -36,6 +37,10 @@ const props = defineProps({
         type: String,
         default: null,
     },
+    followingUserIds: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const page = usePage();
@@ -43,6 +48,25 @@ const currentUser = computed(() => page.props.auth?.user);
 
 const dismissedPostIds = ref(new Set());
 const undoToastPost = ref(null);
+
+// Following tracking state
+const followingUserIds = ref(new Set(props.followingUserIds || []));
+const followingLoadingIds = ref(new Set());
+const localTopWriters = ref([...(props.sidebarData?.top_writers || [])]);
+
+watch(() => props.sidebarData?.top_writers, (newWriters) => {
+    if (newWriters) {
+        localTopWriters.value = [...newWriters];
+    }
+});
+
+watch(() => props.followingUserIds, (newIds) => {
+    if (newIds) {
+        followingUserIds.value = new Set(newIds);
+    }
+});
+
+const isFollowing = (userId) => followingUserIds.value.has(userId);
 
 // Available tabs
 const tabs = computed(() => {
@@ -129,12 +153,69 @@ const toggleBookmark = (postSlug) => {
     router.post(route('posts.bookmark', postSlug), {}, { preserveScroll: true });
 };
 
-const toggleFollow = (username) => {
+const toggleFollow = async (target) => {
     if (!currentUser.value) {
         router.visit(route('login'));
         return;
     }
-    router.post(route('users.follow', username), {}, { preserveScroll: true });
+
+    const userId = typeof target === 'object' && target ? target.id : null;
+    const username = typeof target === 'object' && target ? target.username : target;
+
+    if (!username) return;
+    if (userId && followingLoadingIds.value.has(userId)) return;
+
+    const wasFollowing = userId ? followingUserIds.value.has(userId) : false;
+
+    // Optimistic UI toggle
+    if (userId) {
+        if (wasFollowing) {
+            followingUserIds.value.delete(userId);
+        } else {
+            followingUserIds.value.add(userId);
+        }
+
+        const topWriter = localTopWriters.value.find(w => w.id === userId);
+        if (topWriter) {
+            topWriter.followers_count = Math.max(0, (topWriter.followers_count || 0) + (wasFollowing ? -1 : 1));
+        }
+
+        followingLoadingIds.value.add(userId);
+    }
+
+    try {
+        const response = await axios.post(route('users.follow', username));
+        if (response.data?.is_following !== undefined && userId) {
+            if (response.data.is_following) {
+                followingUserIds.value.add(userId);
+            } else {
+                followingUserIds.value.delete(userId);
+            }
+
+            const topWriter = localTopWriters.value.find(w => w.id === userId);
+            if (topWriter && response.data.followers_count !== undefined) {
+                topWriter.followers_count = response.data.followers_count;
+            }
+        }
+    } catch (e) {
+        // Revert on failure
+        if (userId) {
+            if (wasFollowing) {
+                followingUserIds.value.add(userId);
+            } else {
+                followingUserIds.value.delete(userId);
+            }
+
+            const topWriter = localTopWriters.value.find(w => w.id === userId);
+            if (topWriter) {
+                topWriter.followers_count = Math.max(0, (topWriter.followers_count || 0) + (wasFollowing ? 1 : -1));
+            }
+        }
+    } finally {
+        if (userId) {
+            followingLoadingIds.value.delete(userId);
+        }
+    }
 };
 </script>
 
@@ -198,7 +279,7 @@ const toggleFollow = (username) => {
                             {{ heroPost.excerpt }}
                         </p>
 
-                        <div class="mt-6 flex items-center justify-between">
+                        <div class="mt-6 flex items-center justify-between flex-wrap gap-4">
                             <div class="flex items-center gap-3">
                                 <Link :href="route('author.show', heroPost.user.username)">
                                     <img
@@ -208,9 +289,25 @@ const toggleFollow = (username) => {
                                     />
                                 </Link>
                                 <div>
-                                    <Link :href="route('author.show', heroPost.user.username)" class="text-sm font-semibold text-gray-900 dark:text-white hover:text-indigo-600">
-                                        {{ heroPost.user.name }}
-                                    </Link>
+                                    <div class="flex items-center gap-2">
+                                        <Link :href="route('author.show', heroPost.user.username)" class="text-sm font-semibold text-gray-900 dark:text-white hover:text-indigo-600">
+                                            {{ heroPost.user.name }}
+                                        </Link>
+                                        <button
+                                            v-if="!currentUser || currentUser.id !== heroPost.user.id"
+                                            type="button"
+                                            @click.stop="toggleFollow(heroPost.user)"
+                                            :disabled="followingLoadingIds.has(heroPost.user.id)"
+                                            :class="[
+                                                isFollowing(heroPost.user.id)
+                                                    ? 'border border-gray-300 bg-white text-gray-700 hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-red-950 dark:hover:text-red-400'
+                                                    : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-xs dark:bg-indigo-500 dark:hover:bg-indigo-400 border border-transparent',
+                                                'rounded-full px-2.5 py-0.5 text-xs font-semibold transition disabled:opacity-50'
+                                            ]"
+                                        >
+                                            {{ isFollowing(heroPost.user.id) ? 'Following' : 'Follow' }}
+                                        </button>
+                                    </div>
                                     <div class="flex items-center gap-2 text-xs text-gray-400">
                                         <span>{{ heroPost.reading_time_minutes }} min read</span>
                                         <span>•</span>
@@ -330,11 +427,30 @@ const toggleFollow = (username) => {
                                         <div>
                                             <!-- Author bar & Category chip -->
                                             <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                                                <div class="flex items-center gap-2">
+                                                <div class="flex items-center gap-2 flex-wrap">
                                                     <Link :href="route('author.show', post.user.username)" class="flex items-center gap-1.5 font-semibold text-gray-800 dark:text-gray-200 hover:text-indigo-600">
                                                         <img :src="post.user.avatar_url" :alt="post.user.name" loading="lazy" decoding="async" width="20" height="20" class="h-5 w-5 rounded-full object-cover" />
                                                         <span>{{ post.user.name }}</span>
                                                     </Link>
+
+                                                    <!-- Follow / Following button on post card -->
+                                                    <button
+                                                        v-if="!currentUser || currentUser.id !== post.user.id"
+                                                        type="button"
+                                                        @click.stop="toggleFollow(post.user)"
+                                                        :disabled="followingLoadingIds.has(post.user.id)"
+                                                        :class="[
+                                                            isFollowing(post.user.id)
+                                                                ? 'text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 font-medium'
+                                                                : 'text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-semibold',
+                                                            'text-xs transition inline-flex items-center gap-1 disabled:opacity-50'
+                                                        ]"
+                                                        :title="isFollowing(post.user.id) ? 'Unfollow ' + post.user.name : 'Follow ' + post.user.name"
+                                                    >
+                                                        <span>•</span>
+                                                        <span>{{ isFollowing(post.user.id) ? 'Following' : 'Follow' }}</span>
+                                                    </button>
+
                                                     <span v-if="post.category">•</span>
                                                     <Link
                                                         v-if="post.category"
@@ -449,13 +565,13 @@ const toggleFollow = (username) => {
                 <!-- Sidebar (Desktop) -->
                 <aside class="mt-12 lg:mt-0 lg:col-span-4 space-y-8">
                     <!-- Top Writers Section -->
-                    <div v-if="sidebarData.top_writers && sidebarData.top_writers.length > 0" class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    <div v-if="localTopWriters && localTopWriters.length > 0" class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                         <h3 class="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                             Writers to Follow
                         </h3>
                         <div class="mt-4 space-y-4">
                             <div
-                                v-for="writer in sidebarData.top_writers"
+                                v-for="writer in localTopWriters"
                                 :key="writer.id"
                                 class="flex items-center justify-between"
                             >
@@ -474,10 +590,16 @@ const toggleFollow = (username) => {
                                 <button
                                     v-if="!currentUser || currentUser.id !== writer.id"
                                     type="button"
-                                    @click="toggleFollow(writer.username)"
-                                    class="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-700 shadow-xs hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                                    @click="toggleFollow(writer)"
+                                    :disabled="followingLoadingIds.has(writer.id)"
+                                    :class="[
+                                        isFollowing(writer.id)
+                                            ? 'border border-gray-300 bg-white text-gray-700 hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-red-950 dark:hover:text-red-400'
+                                            : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-xs dark:bg-indigo-500 dark:hover:bg-indigo-400 border border-transparent',
+                                        'rounded-full px-3 py-1 text-xs font-semibold transition disabled:opacity-50'
+                                    ]"
                                 >
-                                    Follow
+                                    {{ isFollowing(writer.id) ? 'Following' : 'Follow' }}
                                 </button>
                             </div>
                         </div>

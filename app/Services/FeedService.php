@@ -541,7 +541,7 @@ class FeedService
      */
     public function getSidebarData(?User $user): array
     {
-        return Cache::remember('feed_sidebar_data', 600, function () {
+        $data = Cache::remember('feed_sidebar_data', 600, function () {
             // Popular categories with post count
             $categories = Category::whereHas('posts', fn ($q) => $q->published())
                 ->withCount(['posts' => fn ($q) => $q->published()])
@@ -573,6 +573,20 @@ class FeedService
                 'top_writers' => $topWriters,
             ];
         });
+
+        // Set user-specific following status for top writers
+        $followedIds = $user ? $user->following()->pluck('followed_id')->all() : [];
+        if (isset($data['top_writers'])) {
+            foreach ($data['top_writers'] as $writer) {
+                if (is_object($writer)) {
+                    $writer->is_following = in_array($writer->id, $followedIds, true);
+                } elseif (is_array($writer)) {
+                    $writer['is_following'] = in_array($writer['id'] ?? null, $followedIds, true);
+                }
+            }
+        }
+
+        return $data;
     }
 
     /**

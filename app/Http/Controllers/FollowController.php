@@ -58,6 +58,7 @@ class FollowController extends Controller
         }
 
         $feedService->invalidateUserFeedCache($follower);
+        \Illuminate\Support\Facades\Cache::forget('feed_sidebar_data');
 
         if ($request->wantsJson()) {
             return response()->json([
