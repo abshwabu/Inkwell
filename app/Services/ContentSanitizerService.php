@@ -326,6 +326,11 @@ class ContentSanitizerService
             return;
         }
 
+        // Normalize local storage URLs to root-relative path
+        if (preg_match('#^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?(/storage/.*)$#i', $cleanSrc, $matches)) {
+            $cleanSrc = $matches[1];
+        }
+
         $node->setAttribute('src', $cleanSrc);
         $node->setAttribute('loading', 'lazy');
         $node->setAttribute('decoding', 'async');

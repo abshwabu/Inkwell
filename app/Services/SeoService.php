@@ -26,7 +26,15 @@ class SeoService
             'category' => $post->category?->slug ?? 'uncategorized',
             'post' => $post->slug,
         ]);
-        $image = $post->cover_image_path ? asset('storage/' . $post->cover_image_path) : asset('images/og-default.png');
+        if ($post->cover_image_path) {
+            if (str_starts_with($post->cover_image_path, 'http://') || str_starts_with($post->cover_image_path, 'https://')) {
+                $image = $post->cover_image_path;
+            } else {
+                $image = url($post->cover_image_path);
+            }
+        } else {
+            $image = asset('images/og-default.png');
+        }
         $authorUrl = route('author.show', ['username' => $post->user->username]);
 
         return [

@@ -166,7 +166,13 @@ const handleCategorySelect = (category) => {
                                     type="button"
                                     class="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white p-1 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                                 >
-                                    <span class="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300">
+                                    <img
+                                        v-if="page.props.auth.user.avatar_url"
+                                        :src="page.props.auth.user.avatar_url"
+                                        :alt="page.props.auth.user.name"
+                                        class="h-7 w-7 rounded-full object-cover"
+                                    />
+                                    <span v-else class="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300">
                                         {{ page.props.auth.user.name.charAt(0).toUpperCase() }}
                                     </span>
                                     <span class="hidden max-w-[120px] truncate pr-2 text-xs font-medium sm:inline">

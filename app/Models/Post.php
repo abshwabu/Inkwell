@@ -62,6 +62,88 @@ class Post extends Model
     }
 
     /**
+     * Get the normalized cover image URL or root-relative path.
+     */
+    public function getCoverImagePathAttribute(?string $value): ?string
+    {
+        if (! $value) {
+            return null;
+        }
+
+        // Normalize local storage URLs to root-relative path
+        if (preg_match('#^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?(/storage/.*)$#i', $value, $matches)) {
+            return $matches[1];
+        }
+
+        if (str_starts_with($value, 'http://') || str_starts_with($value, 'https://')) {
+            return $value;
+        }
+
+        if (str_starts_with($value, '/storage/')) {
+            return $value;
+        }
+
+        if (str_starts_with($value, 'storage/')) {
+            return '/' . $value;
+        }
+
+        return '/storage/' . ltrim($value, '/');
+    }
+
+    /**
+     * Mutator to ensure stored cover_image_path is normalized.
+     */
+    public function setCoverImagePathAttribute(?string $value): void
+    {
+        if (! $value) {
+            $this->attributes['cover_image_path'] = null;
+            return;
+        }
+
+        if (preg_match('#^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?(/storage/.*)$#i', $value, $matches)) {
+            $this->attributes['cover_image_path'] = $matches[1];
+            return;
+        }
+
+        $this->attributes['cover_image_path'] = $value;
+    }
+
+    /**
+     * Normalize content HTML to ensure images inside posts use root-relative storage URLs.
+     */
+    public function getContentHtmlAttribute(?string $value): ?string
+    {
+        if (! $value) {
+            return $value;
+        }
+
+        return preg_replace('#https?://(?:localhost|127\.0\.0\.1)(?::\d+)?/storage/#i', '/storage/', $value);
+    }
+
+    /**
+     * Normalize content JSON to ensure TipTap editor images use root-relative storage URLs.
+     */
+    public function getContentJsonAttribute($value): ?array
+    {
+        if (! $value) {
+            return null;
+        }
+
+        $decoded = is_string($value) ? json_decode($value, true) : $value;
+        if (! is_array($decoded)) {
+            return $decoded;
+        }
+
+        $jsonStr = json_encode($decoded);
+        if (preg_match('#https?://(?:localhost|127\.0\.0\.1)(?::\d+)?/storage/#i', $jsonStr)) {
+            $jsonStr = preg_replace('#https?://(?:localhost|127\.0\.0\.1)(?::\d+)?/storage/#i', '/storage/', $jsonStr);
+            return json_decode($jsonStr, true);
+        }
+
+        return $decoded;
+    }
+
+    /**
      * Model boot logic.
      */
     protected static function booted(): void

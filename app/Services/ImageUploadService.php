@@ -79,6 +79,6 @@ class ImageUploadService
             throw new \RuntimeException('Failed to save WebP image.');
         }
 
-        return $disk->url($relativeFilePath);
+        return '/storage/' . $relativeFilePath;
     }
 }

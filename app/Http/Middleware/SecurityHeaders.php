@@ -21,7 +21,7 @@ class SecurityHeaders
             "default-src 'self'",
             "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://fonts.bunny.net",
             "style-src 'self' 'unsafe-inline' https://fonts.bunny.net",
-            "img-src 'self' data: blob: https:",
+            "img-src 'self' data: blob: https: http:",
             "font-src 'self' https://fonts.bunny.net data:",
             "frame-src 'self' https://www.youtube-nocookie.com https://www.youtube.com",
             "connect-src 'self' https: ws: wss:",
