@@ -339,4 +339,46 @@ class PersonalizedFrontPageTest extends TestCase
         $this->user->refresh();
         $this->assertTrue($this->user->preferredCategories()->where('categories.id', $this->categoryTech->id)->exists());
     }
+
+    /**
+     * Test filtering front page feed by category topic.
+     */
+    public function test_category_filter_in_front_page_feed(): void
+    {
+        $techPost = Post::factory()->create([
+            'user_id' => $this->authorA->id,
+            'category_id' => $this->categoryTech->id,
+            'title' => 'Pure Tech Story',
+            'status' => PostStatus::PUBLISHED,
+            'published_at' => now()->subHour(),
+        ]);
+
+        $lifePost = Post::factory()->create([
+            'user_id' => $this->authorB->id,
+            'category_id' => $this->categoryLifestyle->id,
+            'title' => 'Pure Lifestyle Story',
+            'status' => PostStatus::PUBLISHED,
+            'published_at' => now()->subHours(2),
+        ]);
+
+        // 1. Visit with category filter on default feed
+        $response = $this->get('/?category=technology');
+        $response->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Welcome')
+                ->where('selectedCategory', 'technology')
+                ->has('posts.data', 1)
+                ->where('posts.data.0.id', $techPost->id)
+            );
+
+        // 2. Filter on latest tab
+        $latestRes = $this->get('/?tab=latest&category=lifestyle');
+        $latestRes->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Welcome')
+                ->where('selectedCategory', 'lifestyle')
+                ->has('posts.data', 1)
+                ->where('posts.data.0.id', $lifePost->id)
+            );
+    }
 }

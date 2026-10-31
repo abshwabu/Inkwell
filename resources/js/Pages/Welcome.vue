@@ -72,7 +72,7 @@ const switchTab = (tabId) => {
 };
 
 const filterByCategory = (categorySlug) => {
-    const newSlug = props.selectedCategory === categorySlug ? undefined : categorySlug;
+    const newSlug = (!categorySlug || props.selectedCategory === categorySlug) ? undefined : categorySlug;
     router.get(route('home'), {
         tab: props.tab,
         category: newSlug,
@@ -272,6 +272,23 @@ const toggleFollow = (username) => {
             <div class="lg:grid lg:grid-cols-12 lg:gap-10">
                 <!-- Feed Column -->
                 <main class="lg:col-span-8">
+                    <!-- Active Topic Filter Banner -->
+                    <div v-if="selectedCategory" class="mb-5 flex items-center justify-between rounded-2xl bg-indigo-50/80 px-4 py-2.5 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60">
+                        <div class="flex items-center gap-2 text-xs">
+                            <span class="text-gray-500 dark:text-gray-400">Showing topic:</span>
+                            <span class="font-bold text-indigo-700 dark:text-indigo-300">
+                                {{ categories.find(c => c.slug === selectedCategory)?.name || selectedCategory }}
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            @click="filterByCategory(null)"
+                            class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-200 transition underline"
+                        >
+                            Clear filter
+                        </button>
+                    </div>
+
                     <!-- Feed Tabs Header -->
                     <div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 pb-2 mb-6">
                         <nav class="flex space-x-6 text-sm font-semibold">
@@ -402,8 +419,15 @@ const toggleFollow = (username) => {
 
                         <!-- Empty State -->
                         <div v-if="posts.data.length === 0" class="rounded-2xl border border-dashed border-gray-300 p-12 text-center dark:border-gray-800">
-                            <p class="text-sm font-semibold text-gray-700 dark:text-gray-300">No stories in this feed yet.</p>
-                            <p class="mt-1 text-xs text-gray-500">Explore other topics or check the Trending tab.</p>
+                            <p class="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                {{ selectedCategory ? 'No stories found in this topic yet.' : 'No stories in this feed yet.' }}
+                            </p>
+                            <p v-if="selectedCategory" class="mt-2">
+                                <button type="button" @click="filterByCategory(null)" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                                    View all topics
+                                </button>
+                            </p>
+                            <p v-else class="mt-1 text-xs text-gray-500">Explore other topics or check the Trending tab.</p>
                         </div>
                     </div>
 

@@ -53,19 +53,25 @@ class FeedController extends Controller
             }
         }
 
-        // If guest selected a category filter query param, add it to guest preferences
+        // If category filter query param is present
         $selectedCategorySlug = $request->input('category');
+        if ($selectedCategorySlug === 'null' || empty(trim((string) $selectedCategorySlug))) {
+            $selectedCategorySlug = null;
+        }
+
         if ($selectedCategorySlug) {
             $category = Category::where('slug', $selectedCategorySlug)->first();
             if ($category) {
                 $guestPrefs['categories'] = array_unique(array_merge($guestPrefs['categories'] ?? [], [$category->id]));
+            } else {
+                $selectedCategorySlug = null;
             }
         }
 
         $page = (int) $request->input('page', 1);
         $perPage = 10;
 
-        $posts = $this->feedService->getFeed($user, $tab, $page, $perPage, $guestPrefs);
+        $posts = $this->feedService->getFeed($user, $tab, $page, $perPage, $guestPrefs, $selectedCategorySlug);
         $heroPost = $this->feedService->getHeroPost();
         $sidebarData = $this->feedService->getSidebarData($user);
 

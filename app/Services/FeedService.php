@@ -23,25 +23,34 @@ class FeedService
         string $tab = 'for-you',
         int $page = 1,
         int $perPage = 10,
-        ?array $guestPreferences = null
+        ?array $guestPreferences = null,
+        ?string $categorySlug = null
     ): LengthAwarePaginator {
         $tab = strtolower($tab);
         $userId = $user ? $user->id : 0;
         $version = $user ? (int) Cache::get("feed_version_{$userId}", 1) : 1;
+
+        $category = null;
+        $categoryId = null;
+        if (! empty($categorySlug)) {
+            $category = Category::where('slug', $categorySlug)->first();
+            $categoryId = $category?->id;
+        }
 
         // For guests, hash guest preferences into cache key
         $guestKey = (! $user && ! empty($guestPreferences))
             ? substr(md5(json_encode($guestPreferences)), 0, 8)
             : 'default';
 
-        $cacheKey = "feed_u{$userId}_{$guestKey}_{$tab}_p{$page}_v{$version}";
+        $categoryKey = $categorySlug ?: 'all';
+        $cacheKey = "feed_u{$userId}_{$guestKey}_{$categoryKey}_{$tab}_p{$page}_v{$version}";
 
-        return Cache::remember($cacheKey, 300, function () use ($user, $tab, $page, $perPage, $guestPreferences) {
+        return Cache::remember($cacheKey, 300, function () use ($user, $tab, $page, $perPage, $guestPreferences, $categoryId) {
             return match ($tab) {
-                'following' => $this->getFollowingFeed($user, $page, $perPage),
-                'latest' => $this->getLatestFeed($user, $page, $perPage, $guestPreferences),
-                'trending' => $this->getTrendingFeed($user, $page, $perPage, $guestPreferences),
-                default => $this->getPersonalizedFeed($user, $page, $perPage, $guestPreferences),
+                'following' => $this->getFollowingFeed($user, $page, $perPage, $categoryId),
+                'latest' => $this->getLatestFeed($user, $page, $perPage, $guestPreferences, $categoryId),
+                'trending' => $this->getTrendingFeed($user, $page, $perPage, $guestPreferences, 7, $categoryId),
+                default => $this->getPersonalizedFeed($user, $page, $perPage, $guestPreferences, $categoryId),
             };
         });
     }
@@ -53,13 +62,41 @@ class FeedService
         ?User $user,
         int $page,
         int $perPage,
-        ?array $guestPreferences
+        ?array $guestPreferences,
+        ?int $categoryId = null
     ): LengthAwarePaginator {
         $signals = $this->getUserSignals($user, $guestPreferences);
 
+        $userId = $user ? $user->id : null;
+        $dismissedPostIds = $signals['dismissed_post_ids'];
+
+        // If a specific topic/category is selected, filter strictly to this category
+        if ($categoryId) {
+            $query = Post::published()
+                ->withRelations()
+                ->where('posts.category_id', $categoryId)
+                ->whereNull('posts.deleted_at');
+
+            if ($userId) {
+                $query->where('posts.user_id', '!=', $userId);
+            }
+
+            if (! empty($dismissedPostIds)) {
+                $query->whereNotIn('posts.id', $dismissedPostIds);
+            }
+
+            $scoreExpression = $this->buildSqlScoreExpression($signals);
+            return $query->select('posts.*')
+                ->selectRaw("{$scoreExpression} as feed_score")
+                ->orderByDesc('feed_score')
+                ->orderByDesc('posts.published_at')
+                ->paginate($perPage, ['*'], 'page', $page)
+                ->withQueryString();
+        }
+
         // Cold-start fallback: when no signals, fallback to trending in last 7 days
         if (! $signals['has_signals']) {
-            return $this->getTrendingFeed($user, $page, $perPage, $guestPreferences, 7);
+            return $this->getTrendingFeed($user, $page, $perPage, $guestPreferences, 7, null);
         }
 
         $userId = $user ? $user->id : null;
@@ -116,29 +153,29 @@ class FeedService
             }
         }
 
-        return new LengthAwarePaginator(
+        return (new LengthAwarePaginator(
             $mergedPosts,
             $total,
             $perPage,
             $page,
             ['path' => LengthAwarePaginator::resolveCurrentPath()]
-        );
+        ))->withQueryString();
     }
 
     /**
      * Retrieve feed of posts by followed authors.
      */
-    protected function getFollowingFeed(?User $user, int $page, int $perPage): LengthAwarePaginator
+    protected function getFollowingFeed(?User $user, int $page, int $perPage, ?int $categoryId = null): LengthAwarePaginator
     {
         if (! $user) {
             // Guests have no followings, fallback to trending
-            return $this->getTrendingFeed(null, $page, $perPage);
+            return $this->getTrendingFeed(null, $page, $perPage, null, 7, $categoryId);
         }
 
         $followingIds = $user->following()->pluck('users.id')->toArray();
         if (empty($followingIds)) {
             // Cold-start fallback if user follows no one
-            return $this->getTrendingFeed($user, $page, $perPage);
+            return $this->getTrendingFeed($user, $page, $perPage, null, 7, $categoryId);
         }
 
         $dismissedPostIds = $user->dismissedPosts()->pluck('post_id')->toArray();
@@ -149,11 +186,15 @@ class FeedService
             ->where('posts.user_id', '!=', $user->id)
             ->whereNull('posts.deleted_at');
 
+        if ($categoryId) {
+            $query->where('posts.category_id', $categoryId);
+        }
+
         if (! empty($dismissedPostIds)) {
             $query->whereNotIn('posts.id', $dismissedPostIds);
         }
 
-        return $query->latest('posts.published_at')->paginate($perPage, ['*'], 'page', $page);
+        return $query->latest('posts.published_at')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
     }
 
     /**
@@ -163,13 +204,18 @@ class FeedService
         ?User $user,
         int $page,
         int $perPage,
-        ?array $guestPreferences = null
+        ?array $guestPreferences = null,
+        ?int $categoryId = null
     ): LengthAwarePaginator {
         $dismissedPostIds = $this->getDismissedPostIds($user, $guestPreferences);
 
         $query = Post::published()
             ->withRelations()
             ->whereNull('posts.deleted_at');
+
+        if ($categoryId) {
+            $query->where('posts.category_id', $categoryId);
+        }
 
         if ($user) {
             $query->where('posts.user_id', '!=', $user->id);
@@ -179,7 +225,7 @@ class FeedService
             $query->whereNotIn('posts.id', $dismissedPostIds);
         }
 
-        return $query->latest('posts.published_at')->paginate($perPage, ['*'], 'page', $page);
+        return $query->latest('posts.published_at')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
     }
 
     /**
@@ -190,7 +236,8 @@ class FeedService
         int $page = 1,
         int $perPage = 10,
         ?array $guestPreferences = null,
-        int $days = 7
+        int $days = 7,
+        ?int $categoryId = null
     ): LengthAwarePaginator {
         $dismissedPostIds = $this->getDismissedPostIds($user, $guestPreferences);
 
@@ -198,6 +245,10 @@ class FeedService
             ->withRelations()
             ->where('posts.published_at', '>=', now()->subDays($days))
             ->whereNull('posts.deleted_at');
+
+        if ($categoryId) {
+            $query->where('posts.category_id', $categoryId);
+        }
 
         if ($user) {
             $query->where('posts.user_id', '!=', $user->id);
@@ -209,7 +260,7 @@ class FeedService
 
         // If not enough posts in the last 7 days, broaden time window
         if ((clone $query)->count() < 5 && $days < 60) {
-            return $this->getTrendingFeed($user, $page, $perPage, $guestPreferences, 60);
+            return $this->getTrendingFeed($user, $page, $perPage, $guestPreferences, 60, $categoryId);
         }
 
         // Trending scoring formula:
@@ -222,7 +273,8 @@ class FeedService
             ->selectRaw("{$trendingScoreSql} as trending_score")
             ->orderByDesc('trending_score')
             ->orderByDesc('posts.published_at')
-            ->paginate($perPage, ['*'], 'page', $page);
+            ->paginate($perPage, ['*'], 'page', $page)
+            ->withQueryString();
     }
 
     /**
